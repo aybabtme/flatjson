@@ -39,6 +39,117 @@ func TestScanObjects(t *testing.T) {
 				{name: `"hello"`, value: `"world"`},
 			},
 		},
+		{
+			Name:      "simple number object",
+			Data:      `{"hello":-49.14159e-2}`,
+			WantStart: 0,
+			WantEnd:   22,
+			WantNumber: []tnumber{
+				{name: `"hello"`, value: -49.14159e-2},
+			},
+		},
+		{
+			Name:      "simple true bool object",
+			Data:      `{"hello":true}`,
+			WantStart: 0,
+			WantEnd:   14,
+			WantBool: []tbool{
+				{name: `"hello"`, value: true},
+			},
+		},
+		{
+			Name:      "simple false bool object",
+			Data:      `{"hello":false}`,
+			WantStart: 0,
+			WantEnd:   15,
+			WantBool: []tbool{
+				{name: `"hello"`, value: false},
+			},
+		},
+		{
+			Name:      "simple null object",
+			Data:      `{"hello":null}`,
+			WantStart: 0,
+			WantEnd:   14,
+			WantNull: []tnull{
+				{name: `"hello"`},
+			},
+		},
+
+		{
+			Name:      "simple composite object",
+			Data:      `{"a":"1","b":2,"c":true,"d":false,"e":null}`,
+			WantStart: 0,
+			WantEnd:   43,
+			WantString: []tstring{
+				{name: `"a"`, value: `"1"`},
+			},
+			WantNumber: []tnumber{
+				{name: `"b"`, value: 2},
+			},
+			WantBool: []tbool{
+				{name: `"c"`, value: true},
+				{name: `"d"`, value: false},
+			},
+			WantNull: []tnull{
+				{name: `"e"`},
+			},
+		},
+
+		{
+			Name: "composite object with whitespace",
+			Data: `
+            {
+                "a" :   "1",
+                "b" :   2,
+                "c" :   true,
+                "d" :   false,
+                "e":    null
+}`,
+			WantStart: 13,
+			WantEnd:   162,
+			WantString: []tstring{
+				{name: `"a"`, value: `"1"`},
+			},
+			WantNumber: []tnumber{
+				{name: `"b"`, value: 2},
+			},
+			WantBool: []tbool{
+				{name: `"c"`, value: true},
+				{name: `"d"`, value: false},
+			},
+			WantNull: []tnull{
+				{name: `"e"`},
+			},
+		},
+
+		{
+			Name: "composite object with weird whitespace",
+			Data: `
+            {
+                "a" :   "1"
+                ,"b" :   2,
+                "c" :true ,
+                "d" :   false
+                ,
+                "e":    null
+}`,
+			WantStart: 13,
+			WantEnd:   177,
+			WantString: []tstring{
+				{name: `"a"`, value: `"1"`},
+			},
+			WantNumber: []tnumber{
+				{name: `"b"`, value: 2},
+			},
+			WantBool: []tbool{
+				{name: `"c"`, value: true},
+				{name: `"d"`, value: false},
+			},
+			WantNull: []tnull{
+				{name: `"e"`},
+			},
+		},
 
 		// special cases
 		{

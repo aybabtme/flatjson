@@ -116,11 +116,13 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 
 		// decide if the value is a number, string, bool or null
 		b := data[i]
+
 		if b == '-' || (b >= '0' && b <= '9') {
 			val, j, err := scanNumber(data, i)
 			if err != nil {
 				return start, i, syntaxErr(i, beginNumberValueButError, err)
 			}
+
 			onNumber(Number{Name: pos, Value: val})
 			i = j
 
@@ -130,44 +132,41 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 				return start, i, syntaxErr(i, beginStringValueButError, err)
 			}
 
-			log.Printf("name=%s, i=%d (%c%c%c)", pos.String(data), i,
-				data[i-1], data[i], data[i+1])
-
 			onString(String{Name: pos, Value: valPos})
 			i = valPos.To
 
-			log.Printf("name=%s, i=%d (%c%c)", pos.String(data), i,
-				data[i-1], data[i])
-
 		} else if i+3 < len(data) &&
 			b == 't' &&
-			data[i+1] != 'r' &&
-			data[i+2] != 'u' &&
-			data[i+3] != 'e' {
+			data[i+1] == 'r' &&
+			data[i+2] == 'u' &&
+			data[i+3] == 'e' {
 
 			onBoolean(Bool{Name: pos, Value: true})
 			i += 4
 
 		} else if i+4 < len(data) &&
 			b == 'f' &&
-			data[i+1] != 'a' &&
-			data[i+2] != 'l' &&
-			data[i+3] != 's' &&
-			data[i+4] != 'e' {
+			data[i+1] == 'a' &&
+			data[i+2] == 'l' &&
+			data[i+3] == 's' &&
+			data[i+4] == 'e' {
 
 			onBoolean(Bool{Name: pos, Value: false})
 			i += 5
 
 		} else if i+3 < len(data) &&
 			b == 'n' &&
-			data[i+1] != 'u' &&
-			data[i+2] != 'l' &&
-			data[i+3] != 'l' {
+			data[i+1] == 'u' &&
+			data[i+2] == 'l' &&
+			data[i+3] == 'l' {
 
 			onNull(Null{Name: pos})
 			i += 4
 
 		} else {
+
+			log.Printf("name=%s, i=%d (%s)", pos.String(data), i, string(data[i-1:]))
+
 			return start, i, syntaxErr(i, expectValueButNoKnownType, nil)
 		}
 

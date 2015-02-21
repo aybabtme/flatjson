@@ -4,6 +4,28 @@ import (
 	"math"
 )
 
+type SyntaxError struct {
+	Offset  int
+	Message string
+
+	SubErr *SyntaxError
+}
+
+func syntaxErr(offset int, msg string, suberr *SyntaxError) *SyntaxError {
+	return &SyntaxError{
+		Offset:  offset,
+		Message: msg,
+		SubErr:  suberr,
+	}
+}
+
+func (s *SyntaxError) Error() string {
+	if s.SubErr == nil {
+		return s.Message
+	}
+	return s.Message + ", " + s.SubErr.Error()
+}
+
 type Pos struct {
 	From int
 	To   int
@@ -132,27 +154,10 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 	return i, syntaxErr(i, "end of stream reached and end of object not found", nil)
 }
 
-type SyntaxError struct {
-	Offset  int
-	Message string
-
-	SubErr *SyntaxError
-}
-
-func syntaxErr(offset int, msg string, suberr *SyntaxError) *SyntaxError {
-	return &SyntaxError{
-		Offset:  offset,
-		Message: msg,
-		SubErr:  suberr,
-	}
-}
-
-func (s *SyntaxError) Error() string {
-	if s.SubErr == nil {
-		return s.Message
-	}
-	return s.Message + ", " + s.SubErr.Error()
-}
+const (
+	reachedEndScanningCharacters = "reached end of stream scanning characters"
+	unicodeNotFollowHex          = "unicode escape code is followed by non-hex characters"
+)
 
 // scanString reads a JSON string *position* in data. the `To` position
 // is one-past where it last found a string component
@@ -179,12 +184,24 @@ func scanString(data []byte, i int) (Pos, *SyntaxError) {
 			//   u
 			to++
 			// skip the 4 next hex digits
-			if data[to] == 'u' {
-				to += 4
+			if to < len(data) && data[to] == 'u' {
+				if len(data) < to+5 {
+					return Pos{}, syntaxErr(to, reachedEndScanningCharacters, nil)
+				}
+				for j, b := range data[to+1 : to+5] {
+					if b < '0' ||
+						(b > '9' && b < 'a') ||
+						(b > 'f' && b < 'A') ||
+						(b > 'F') {
+						return Pos{}, syntaxErr(to+j-2, unicodeNotFollowHex, nil)
+					}
+					to++
+				}
+
 			}
 		}
 	}
-	return Pos{}, syntaxErr(i, "reached end of stream scanning characters", nil)
+	return Pos{}, syntaxErr(to-1, reachedEndScanningCharacters, nil)
 }
 
 const (

@@ -5,6 +5,127 @@ import (
 	"testing"
 )
 
+func TestScanStrings(t *testing.T) {
+	tests := []struct {
+		Name string
+
+		Start int
+		Data  string
+
+		WantVal Pos
+
+		WantErrError  string
+		WantErrOffset int
+	}{
+		{
+			Name:    "empty",
+			Data:    `""`,
+			WantVal: Pos{0, 2},
+		},
+		{
+			Name:    "1 char",
+			Data:    `"1"`,
+			WantVal: Pos{0, 3},
+		},
+		{
+			Name:    "short sentence",
+			Data:    `"once upon a time"`,
+			WantVal: Pos{0, 18},
+		},
+		{
+			Name:    "special chars",
+			Data:    `"\ \" \\ \/ \b \f \n \r \t \u1111 "`,
+			WantVal: Pos{0, 35},
+		},
+		{
+			Name:    "special chars",
+			Data:    `"\ \" \\ \/ \b \f \n \r \t \u1111 "`,
+			WantVal: Pos{0, 35},
+		},
+
+		{
+			Name:    "empty with garbage at the end",
+			Data:    `"" hjbjhbjkhbehjwb 8y97  898 \n \n `,
+			WantVal: Pos{0, 2},
+		},
+		{
+			Name:    "1 char with garbage at the end",
+			Data:    `"1" hjbjhbjkhbehjwb 8y97  898 \n \n `,
+			WantVal: Pos{0, 3},
+		},
+		{
+			Name:    "short sentence with garbage at the end",
+			Data:    `"once upon a time" hjbjhbjkhbehjwb 8y97  898 \n \n `,
+			WantVal: Pos{0, 18},
+		},
+		{
+			Name:    "special chars with garbage at the end",
+			Data:    `"\ \" \\ \/ \b \f \n \r \t \u1111 " hjbjhbjkhbehjwb 8y97  898 \n \n `,
+			WantVal: Pos{0, 35},
+		},
+		{
+			Name:    "special chars with garbage at the end",
+			Data:    `"\ \" \\ \/ \b \f \n \r \t \u1111 " hjbjhbjkhbehjwb 8y97  898 \n \n `,
+			WantVal: Pos{0, 35},
+		},
+
+		// errors
+		{
+			Name:          "empty content",
+			Data:          "",
+			WantErrError:  reachedEndScanningCharacters,
+			WantErrOffset: 0,
+		},
+		{
+			Name:          "unterminated escape sequence",
+			Data:          `" lol \`,
+			WantErrError:  reachedEndScanningCharacters,
+			WantErrOffset: 7,
+		},
+		{
+			Name:          "bad unicode escape code",
+			Data:          `" lol \u333R "`,
+			WantErrError:  unicodeNotFollowHex,
+			WantErrOffset: 11,
+		},
+		{
+			Name:          "unterminated unicode escape",
+			Data:          `" lol \u`,
+			WantErrError:  reachedEndScanningCharacters,
+			WantErrOffset: 7,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Logf("====> %s", tt.Name)
+
+		gotVal, gotErr := scanString([]byte(tt.Data), tt.Start)
+
+		// if we expect errors
+		if tt.WantErrError != "" && gotErr == nil {
+			t.Errorf("want an error, got none")
+		} else if tt.WantErrError != "" && gotErr != nil {
+			wantOffset := tt.WantErrOffset
+			if wantOffset != gotErr.Offset {
+				t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
+			}
+			if want, got := tt.WantErrError, gotErr.Error(); want != got {
+				t.Errorf("want error: %q", want)
+				t.Errorf(" got error: %q", got)
+			}
+			continue
+		} else if gotErr != nil {
+			t.Errorf("offset=%d", gotErr.Offset)
+			t.Error(gotErr)
+		}
+
+		if want, got := tt.WantVal, gotVal; want != got {
+			t.Errorf("want val %+v", want)
+			t.Errorf(" got val %+v", got)
+		}
+	}
+}
+
 func fequal(a, b float64) bool {
 	if a == b {
 		return true
@@ -674,6 +795,8 @@ func TestScanDigits(t *testing.T) {
 				t.Errorf(" got error: %q", got)
 			}
 			continue
+		} else if gotErr != nil {
+			t.Error(gotErr)
 		}
 
 		if want, got := tt.WantEnd, gotEnd; want != got {

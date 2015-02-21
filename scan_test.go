@@ -1,10 +1,118 @@
 package flatjson
 
 import (
+	"math"
 	"testing"
 )
 
-func TestScanNumbers(t *testing.T) {
+func fequal(a, b float64) bool {
+	if a == b {
+		return true
+	}
+
+	return math.Abs(math.Abs(a-b)/math.Max(a, b)) < 0.000001
+}
+
+func TestScanNumbersErrors(t *testing.T) {
+	tests := []struct {
+		Name string
+
+		Start int
+		Data  string
+
+		WantErrOffset int
+		WantErrError  string
+	}{
+		{
+			Name:         "empty string",
+			Data:         "",
+			WantErrError: reachedEndScanningNumber,
+		},
+		{
+			Name:         "no digits",
+			Data:         "lol",
+			WantErrError: cantFindIntegerPart,
+		},
+		{
+			Name:          "just a sign",
+			Data:          "-",
+			WantErrError:  reachedEndScanningNumber,
+			WantErrOffset: 1,
+		},
+		{
+			Name:          "just a sign and a dot",
+			Data:          "-.",
+			WantErrError:  cantFindIntegerPart,
+			WantErrOffset: 1,
+		},
+		{
+			Name:          "just a sign, a dot and an empty exponent",
+			Data:          "-.e",
+			WantErrError:  cantFindIntegerPart,
+			WantErrOffset: 1,
+		},
+		{
+			Name:          "just a sign, a dot and an empty signed exponent",
+			Data:          "-.e-",
+			WantErrError:  cantFindIntegerPart,
+			WantErrOffset: 1,
+		},
+		{
+			Name:          "just a sign, a dot and an signed exponent",
+			Data:          "-.e-42",
+			WantErrError:  cantFindIntegerPart,
+			WantErrOffset: 1,
+		},
+		{
+			Name:          "just a sign, a 0 and a dot",
+			Data:          "-0.",
+			WantErrError:  scanningForFraction + ", " + reachedEndScanningDigit,
+			WantErrOffset: 3,
+		},
+		{
+			Name:          "missing digits in fraction",
+			Data:          "102.",
+			WantErrError:  scanningForFraction + ", " + reachedEndScanningDigit,
+			WantErrOffset: 4,
+		},
+
+		{
+			Name:          "missing digits in exponent",
+			Data:          "102e",
+			WantErrError:  scanningForExponentSign,
+			WantErrOffset: 4,
+		},
+
+		{
+			Name:          "missing digits in signed exponent",
+			Data:          "102e+",
+			WantErrError:  scanningForExponent + ", " + reachedEndScanningDigit,
+			WantErrOffset: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Logf("====> %s", tt.Name)
+
+		_, _, gotErr := scanNumber([]byte(tt.Data), tt.Start)
+
+		if tt.WantErrError != "" && gotErr == nil {
+			t.Errorf("want an error, got none")
+			continue
+		}
+
+		wantOffset := tt.WantErrOffset
+		if wantOffset != gotErr.Offset {
+			t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
+		}
+		if want, got := tt.WantErrError, gotErr.Error(); want != got {
+			t.Errorf("want error: %q", want)
+			t.Errorf(" got error: %q", got)
+		}
+	}
+}
+
+func TestScanNumbersNoError(t *testing.T) {
 	tests := []struct {
 		Name string
 
@@ -13,10 +121,8 @@ func TestScanNumbers(t *testing.T) {
 
 		WantVal float64
 		WantEnd int
-
-		WantErrError  string
-		WantErrOffset int
 	}{
+		// no exponent
 		{
 			Name:    "integer, 0",
 			Data:    "0",
@@ -113,6 +219,332 @@ func TestScanNumbers(t *testing.T) {
 			WantVal: -9000.14159,
 			WantEnd: 11,
 		},
+
+		// with a positive exponent
+		{
+			Name:    "positive exponent, integer, 0",
+			Data:    "0e42",
+			WantVal: 0e42,
+			WantEnd: 4,
+		},
+		{
+			Name:    "positive exponent, integer, 3",
+			Data:    "3e42",
+			WantVal: 3e42,
+			WantEnd: 4,
+		},
+		{
+			Name:    "positive exponent, integer, 42",
+			Data:    "42e42",
+			WantVal: 42e42,
+			WantEnd: 5,
+		},
+		{
+			Name:    "positive exponent, integer, 9000",
+			Data:    "9000e42",
+			WantVal: 9000e42,
+			WantEnd: 7,
+		},
+		{
+			Name:    "positive exponent, negative integer, -0",
+			Data:    "-0e42",
+			WantVal: -0e42,
+			WantEnd: 5,
+		},
+		{
+			Name:    "positive exponent, negative integer, -3",
+			Data:    "-3e42",
+			WantVal: -3e42,
+			WantEnd: 5,
+		},
+		{
+			Name:    "positive exponent, negative integer, -42",
+			Data:    "-42e42",
+			WantVal: -42e42,
+			WantEnd: 6,
+		},
+		{
+			Name:    "positive exponent, negative integer, -9000",
+			Data:    "-9000e42",
+			WantVal: -9000e42,
+			WantEnd: 8,
+		},
+		{
+			Name:    "positive exponent, real numbers, around 0",
+			Data:    "0.14159e42",
+			WantVal: 0.14159e42,
+			WantEnd: 10,
+		},
+		{
+			Name:    "positive exponent, real numbers, around 3",
+			Data:    "3.14159e42",
+			WantVal: 3.14159e42,
+			WantEnd: 10,
+		},
+		{
+			Name:    "positive exponent, real numbers, around 42",
+			Data:    "42.14159e42",
+			WantVal: 42.14159e42,
+			WantEnd: 11,
+		},
+		{
+			Name:    "positive exponent, real numbers, around 9000",
+			Data:    "9000.14159e42",
+			WantVal: 9000.14159e42,
+			WantEnd: 13,
+		},
+		{
+			Name:    "positive exponent, real numbers, around -0",
+			Data:    "-0.14159e42",
+			WantVal: -0.14159e42,
+			WantEnd: 11,
+		},
+		{
+			Name:    "positive exponent, real numbers, around -3",
+			Data:    "-3.14159e42",
+			WantVal: -3.14159e42,
+			WantEnd: 11,
+		},
+		{
+			Name:    "positive exponent, real numbers, around -42",
+			Data:    "-42.14159e42",
+			WantVal: -42.14159e42,
+			WantEnd: 12,
+		},
+		{
+			Name:    "positive exponent, real numbers, around -9000",
+			Data:    "-9000.14159e42",
+			WantVal: -9000.14159e42,
+			WantEnd: 14,
+		},
+
+		// positive exponent variations
+		{
+			Name:    "positive exponent, real numbers, around -9000",
+			Data:    "-9000.14159E42",
+			WantVal: -9000.14159e42,
+			WantEnd: 14,
+		},
+		{
+			Name:    "positive exponent, real numbers, around -9000",
+			Data:    "-9000.14159e+42",
+			WantVal: -9000.14159e42,
+			WantEnd: 15,
+		},
+		{
+			Name:    "positive exponent, real numbers, around -9000",
+			Data:    "-9000.14159E+42",
+			WantVal: -9000.14159e42,
+			WantEnd: 15,
+		},
+
+		// with a negative exponent
+		{
+			Name:    "negative exponent, integer, 0",
+			Data:    "0e-42",
+			WantVal: 0e-42,
+			WantEnd: 5,
+		},
+		{
+			Name:    "negative exponent, integer, 3",
+			Data:    "3e-42",
+			WantVal: 3e-42,
+			WantEnd: 5,
+		},
+		{
+			Name:    "negative exponent, integer, 42",
+			Data:    "42e-42",
+			WantVal: 42e-42,
+			WantEnd: 6,
+		},
+		{
+			Name:    "negative exponent, integer, 9000",
+			Data:    "9000e-42",
+			WantVal: 9000e-42,
+			WantEnd: 8,
+		},
+		{
+			Name:    "negative exponent, negative integer, -0",
+			Data:    "-0e-42",
+			WantVal: -0e-42,
+			WantEnd: 6,
+		},
+		{
+			Name:    "negative exponent, negative integer, -3",
+			Data:    "-3e-42",
+			WantVal: -3e-42,
+			WantEnd: 6,
+		},
+		{
+			Name:    "negative exponent, negative integer, -42",
+			Data:    "-42e-42",
+			WantVal: -42e-42,
+			WantEnd: 7,
+		},
+		{
+			Name:    "negative exponent, negative integer, -9000",
+			Data:    "-9000e-42",
+			WantVal: -9000e-42,
+			WantEnd: 9,
+		},
+		{
+			Name:    "negative exponent, real numbers, around 0",
+			Data:    "0.14159e-42",
+			WantVal: 0.14159e-42,
+			WantEnd: 11,
+		},
+		{
+			Name:    "negative exponent, real numbers, around 3",
+			Data:    "3.14159e-42",
+			WantVal: 3.14159e-42,
+			WantEnd: 11,
+		},
+		{
+			Name:    "negative exponent, real numbers, around 42",
+			Data:    "42.14159e-42",
+			WantVal: 42.14159e-42,
+			WantEnd: 12,
+		},
+		{
+			Name:    "negative exponent, real numbers, around 9000",
+			Data:    "9000.14159e-42",
+			WantVal: 9000.14159e-42,
+			WantEnd: 14,
+		},
+		{
+			Name:    "negative exponent, real numbers, around -0",
+			Data:    "-0.14159e-42",
+			WantVal: -0.14159e-42,
+			WantEnd: 12,
+		},
+		{
+			Name:    "negative exponent, real numbers, around -3",
+			Data:    "-3.14159e-42",
+			WantVal: -3.14159e-42,
+			WantEnd: 12,
+		},
+		{
+			Name:    "negative exponent, real numbers, around -42",
+			Data:    "-42.14159e-42",
+			WantVal: -42.14159e-42,
+			WantEnd: 13,
+		},
+		{
+			Name:    "negative exponent, real numbers, around -9000",
+			Data:    "-9000.14159e-42",
+			WantVal: -9000.14159e-42,
+			WantEnd: 15,
+		},
+		{
+			Name:    "negative exponent with variation, real numbers, around -9000",
+			Data:    "-9000.14159E-42",
+			WantVal: -9000.14159E-42,
+			WantEnd: 15,
+		},
+
+		// with a garbage and negative exponent
+		{
+			Name:    "garbage and negative exponent, integer, 0",
+			Data:    "0e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 0e-42,
+			WantEnd: 5,
+		},
+		{
+			Name:    "garbage and negative exponent, integer, 3",
+			Data:    "3e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 3e-42,
+			WantEnd: 5,
+		},
+		{
+			Name:    "garbage and negative exponent, integer, 42",
+			Data:    "42e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 42e-42,
+			WantEnd: 6,
+		},
+		{
+			Name:    "garbage and negative exponent, integer, 9000",
+			Data:    "9000e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 9000e-42,
+			WantEnd: 8,
+		},
+		{
+			Name:    "garbage and negative exponent, negative integer, -0",
+			Data:    "-0e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -0e-42,
+			WantEnd: 6,
+		},
+		{
+			Name:    "garbage and negative exponent, negative integer, -3",
+			Data:    "-3e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -3e-42,
+			WantEnd: 6,
+		},
+		{
+			Name:    "garbage and negative exponent, negative integer, -42",
+			Data:    "-42e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -42e-42,
+			WantEnd: 7,
+		},
+		{
+			Name:    "garbage and negative exponent, negative integer, -9000",
+			Data:    "-9000e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -9000e-42,
+			WantEnd: 9,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around 0",
+			Data:    "0.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 0.14159e-42,
+			WantEnd: 11,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around 3",
+			Data:    "3.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 3.14159e-42,
+			WantEnd: 11,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around 42",
+			Data:    "42.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 42.14159e-42,
+			WantEnd: 12,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around 9000",
+			Data:    "9000.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: 9000.14159e-42,
+			WantEnd: 14,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around -0",
+			Data:    "-0.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -0.14159e-42,
+			WantEnd: 12,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around -3",
+			Data:    "-3.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -3.14159e-42,
+			WantEnd: 12,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around -42",
+			Data:    "-42.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -42.14159e-42,
+			WantEnd: 13,
+		},
+		{
+			Name:    "garbage and negative exponent, real numbers, around -9000",
+			Data:    "-9000.14159e-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -9000.14159e-42,
+			WantEnd: 15,
+		},
+		{
+			Name:    "garbage and negative exponent with variation, real numbers, around -9000",
+			Data:    "-9000.14159E-42 yguhbhg2  23h23 2j3h ",
+			WantVal: -9000.14159E-42,
+			WantEnd: 15,
+		},
 	}
 
 	for _, tt := range tests {
@@ -120,24 +552,15 @@ func TestScanNumbers(t *testing.T) {
 
 		gotVal, gotEnd, gotErr := scanNumber([]byte(tt.Data), tt.Start)
 
-		// if we expect errors
-		if tt.WantErrError != "" && gotErr == nil {
-			t.Errorf("want an error, got none")
-		} else if tt.WantErrError != "" && gotErr != nil {
-			if tt.WantErrOffset != gotErr.Offset {
-				t.Errorf("want err offset %d, was %d", tt.WantErrOffset, gotErr.Offset)
-			}
-			if want, got := tt.WantErrError, gotErr.Error(); want != got {
-				t.Errorf("want error: %q", want)
-				t.Errorf(" got error: %q", got)
-			}
+		if gotErr != nil {
+			t.Error(gotErr)
 			continue
 		}
 
 		if want, got := tt.WantEnd, gotEnd; want != got {
 			t.Errorf("want advance to %d, got %d", want, got)
 		}
-		if want, got := tt.WantVal, gotVal; want != got {
+		if want, got := tt.WantVal, gotVal; !fequal(want, got) {
 			t.Errorf("want val %v", want)
 			t.Errorf(" got val %v", got)
 		}

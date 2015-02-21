@@ -187,15 +187,31 @@ func scanString(data []byte, i int) (Pos, *SyntaxError) {
 	return Pos{}, syntaxErr(i, "reached end of stream scanning characters", nil)
 }
 
+const (
+	reachedEndScanningNumber = "reached end of stream scanning a number"
+	cantFindIntegerPart      = "could not find an integer part"
+	scanningForFraction      = "scanning for a fraction"
+	scanningForExponent      = "scanning for an exponent"
+	scanningForExponentSign  = "scanning for an exponent's sign"
+)
+
 // scanNumber reads a JSON number value from data and advances i one past
 // the last number component it found
 // it does not deal with whitespace
 func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 
+	if i >= len(data) {
+		return 0, i, syntaxErr(i, reachedEndScanningNumber, nil)
+	}
+
 	sign := 1.0
 	if data[i] == '-' {
 		sign = -sign
 		i++
+	}
+
+	if i >= len(data) {
+		return 0, i, syntaxErr(i, reachedEndScanningNumber, nil)
 	}
 
 	var v float64
@@ -207,24 +223,21 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 		i++
 	} else if b >= '1' && b <= '9' {
 		v, i, err = scanDigits(data, i)
-		if err != nil {
-			return sign * v, i, err
-		}
 	} else {
-		return sign * v, i, syntaxErr(i, "could not find an integer part", nil)
+		err = syntaxErr(i, cantFindIntegerPart, nil)
 	}
 
-	if i >= len(data) {
-		return sign * v, i, nil
+	if err != nil || i >= len(data) {
+		return sign * v, i, err
 	}
 
 	// scan fraction
-	if i+1 < len(data) && data[i] == '.' {
+	if data[i] == '.' {
 		i++
 		var frac float64
 		frac, i, err = scanDigits(data, i)
 		if err != nil {
-			return sign * v, i, syntaxErr(i, "scanning for a fraction, ", err)
+			return sign * v, i, syntaxErr(i, scanningForFraction, err)
 		}
 		// scale down the digits of the fraction
 		powBase10 := math.Ceil(math.Log10(frac))
@@ -239,7 +252,11 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 	// scan an exponent
 	b = data[i]
 	if b == 'e' || b == 'E' {
-		b := data[i+1]
+		i++
+		if i >= len(data) {
+			return sign * v, i, syntaxErr(i, scanningForExponentSign, nil)
+		}
+		b := data[i]
 
 		// check the sign
 		isNegExp := false
@@ -254,15 +271,13 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 		var exp float64
 		exp, i, err = scanDigits(data, i)
 		if err != nil {
-			return sign * v, i, syntaxErr(i, "scanning for an exponent, ", err)
+			return sign * v, i, syntaxErr(i, scanningForExponent, err)
 		}
 		// scale up or down the value
-		for j := 0; j < int(exp); j++ {
-			if isNegExp {
-				v /= 10
-			} else {
-				v *= 10
-			}
+		if isNegExp {
+			v /= math.Pow(10.0, exp)
+		} else {
+			v *= math.Pow(10.0, exp)
 		}
 	}
 

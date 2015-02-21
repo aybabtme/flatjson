@@ -1,7 +1,6 @@
 package flatjson
 
 import (
-	"log"
 	"math"
 )
 
@@ -169,8 +168,6 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 			i += 4
 
 		} else {
-
-			log.Printf("name=%s, i=%d (%s)", pos.String(data), i, string(data[i-1:]))
 
 			return start, i, syntaxErr(i, expectValueButNoKnownType, nil)
 		}

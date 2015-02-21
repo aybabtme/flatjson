@@ -176,6 +176,98 @@ func TestScanObjects(t *testing.T) {
 			WantErrError:  endOfDataNoClosingBracket,
 			WantErrOffset: 1,
 		},
+		{
+			Name:          "single pair with no closing bracket (number)",
+			Data:          `{"hello":0`,
+			WantErrError:  endOfDataNoClosingBracket,
+			WantErrOffset: 11,
+		},
+		{
+			Name:          "single pair with no closing bracket (bool)",
+			Data:          `{"hello":true`,
+			WantErrError:  endOfDataNoClosingBracket,
+			WantErrOffset: 14,
+		},
+		{
+			Name:          "single pair with no closing bracket (bool and comma)",
+			Data:          `{"hello":true,`,
+			WantErrError:  endOfDataNoClosingBracket,
+			WantErrOffset: 14,
+		},
+		{
+			Name:          "single pair with no closing bracket (number) and space",
+			Data:          `{"hello":0 `,
+			WantErrError:  endOfDataNoClosingBracket,
+			WantErrOffset: 12,
+		},
+		{
+			Name:          "single pair with no closing bracket (bool) and space",
+			Data:          `{"hello":true `,
+			WantErrError:  endOfDataNoClosingBracket,
+			WantErrOffset: 15,
+		},
+		{
+			Name:          "single pair with no closing bracket (bool and comma)",
+			Data:          `{"hello":true, `,
+			WantErrError:  endOfDataNoNamePair,
+			WantErrOffset: 15,
+		},
+
+		{
+			Name:          "missing name in name/value pair",
+			Data:          `{:true, `,
+			WantErrError:  expectingNameBeforeValue + ", " + reachedEndScanningCharacters,
+			WantErrOffset: 1,
+		},
+		{
+			Name:          "missing semicolon in name/value pair",
+			Data:          `{"hello" true, `,
+			WantErrError:  noSemicolonFound,
+			WantErrOffset: 9,
+		},
+		{
+			Name:          "nothing follows the name",
+			Data:          `{"hello" `,
+			WantErrError:  endOfDataNoSemicolon,
+			WantErrOffset: 9,
+		},
+		{
+			Name:          "nothing follows the semicolon",
+			Data:          `{"hello": `,
+			WantErrError:  endOfDataNoValue,
+			WantErrOffset: 10,
+		},
+		{
+			Name:          "malformed number value (garbage)",
+			Data:          `{"hello": 7162hhhh}`,
+			WantErrError:  malformedNumber,
+			WantErrOffset: 10,
+		},
+		{
+			Name:          "malformed number value (incomplete)",
+			Data:          `{"hello": 7162.}`,
+			WantErrError:  beginNumberValueButError + ", " + scanningForFraction + ", " + needAtLeastOneDigit,
+			WantErrOffset: 10,
+		},
+		{
+			Name:          "malformed string value (incomplete)",
+			Data:          `{"hello": "world}`,
+			WantErrError:  beginStringValueButError + ", " + reachedEndScanningCharacters,
+			WantErrOffset: 10,
+		},
+		{
+			Name:          "random crap for value",
+			Data:          `{"hello": lololool}`,
+			WantErrError:  expectValueButNoKnownType,
+			WantErrOffset: 10,
+		},
+
+		{
+			Name:          "no closing bracket at end of object",
+			Data:          `{"hello": "hello"   `,
+			WantErrError:  endOfDataNoClosingBracket,
+			WantErrOffset: 21,
+		},
 	}
 
 	for _, tt := range tests {

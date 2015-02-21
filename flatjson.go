@@ -65,11 +65,12 @@ const (
 	expectingNameBeforeValue  = "expecting a name before a value"
 	endOfDataNoSemicolon      = "end of data reached searching a semi-colon between a name/value pair"
 	noSemicolonFound          = "expecting a semi-colon between names and values"
+	endOfDataNoValue          = "end of data reached searching a value for a name/value pair"
 	beginNumberValueButError  = "found beginning of a number value"
 	beginStringValueButError  = "found beginning of a string value"
 	expectValueButNoKnownType = "expected value, but was neither a number, string, bool or null"
 	endOfDataNoClosingBracket = "end of data reached and end of object not found"
-	needCommaOrClosingBracket = "need a comma or a closing bracket after name/value pair"
+	malformedNumber           = "number value in name/value pair is malformed"
 )
 
 // scan objects according to the spec at http://www.json.org/
@@ -111,7 +112,7 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 		i++
 		i = skipWhitespace(data, i)
 		if i >= len(data) {
-			return start, i, syntaxErr(i, endOfDataNoSemicolon, nil)
+			return start, i, syntaxErr(i, endOfDataNoValue, nil)
 		}
 
 		// decide if the value is a number, string, bool or null
@@ -122,8 +123,12 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 			if err != nil {
 				return start, i, syntaxErr(i, beginNumberValueButError, err)
 			}
-
+			j = skipWhitespace(data, j)
+			if j < len(data) && data[j] != ',' && data[j] != '}' {
+				return start, j, syntaxErr(i, malformedNumber, nil)
+			}
 			onNumber(Number{Name: pos, Value: val})
+
 			i = j
 
 		} else if b == '"' { // strings
@@ -177,8 +182,6 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 				// TODO(antoine): be kind and accept trailing commas
 			} else if data[i] == '}' {
 				return start, i + 1, nil
-			} else {
-				return start, i + 1, syntaxErr(i+1, needCommaOrClosingBracket, nil)
 			}
 		}
 	}
@@ -186,7 +189,7 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 }
 
 const (
-	reachedEndScanningCharacters = "reached end of data scanning characters"
+	reachedEndScanningCharacters = "reached end of data looking for end of string"
 	unicodeNotFollowHex          = "unicode escape code is followed by non-hex characters"
 )
 

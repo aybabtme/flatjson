@@ -1,6 +1,7 @@
 package flatjson
 
 import (
+	"log"
 	"math"
 )
 
@@ -31,6 +32,9 @@ type Pos struct {
 	To   int
 }
 
+func (p Pos) Bytes(data []byte) []byte  { return data[p.From:p.To] }
+func (p Pos) String(data []byte) string { return string(p.Bytes(data)) }
+
 type Number struct {
 	Name  Pos
 	Value float64
@@ -55,40 +59,59 @@ type (
 	nullDec    func(Null)
 )
 
+const (
+	noOpeningBracketFound     = "doesn't begin with a `{`"
+	endOfDataNoNamePair       = "end of data reached searching a name for a name/value pair"
+	expectingNameBeforeValue  = "expecting a name before a value"
+	endOfDataNoSemicolon      = "end of data reached searching a semi-colon between a name/value pair"
+	noSemicolonFound          = "expecting a semi-colon between names and values"
+	beginNumberValueButError  = "found beginning of a number value"
+	beginStringValueButError  = "found beginning of a string value"
+	expectValueButNoKnownType = "expected value, but was neither a number, string, bool or null"
+	endOfDataNoClosingBracket = "end of data reached and end of object not found"
+	needCommaOrClosingBracket = "need a comma or a closing bracket after name/value pair"
+)
+
 // scan objects according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
-func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean booleanDec, onNull nullDec) (int, error) {
+func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean booleanDec, onNull nullDec) (start int, stop int, err error) {
 
-	if data[0] != '{' {
-		return 0, syntaxErr(0, "doesn't begin with a `{`", nil)
+	start = skipWhitespace(data, 0)
+
+	if len(data) == 0 || data[start] != '{' {
+		return start, start, syntaxErr(start, noOpeningBracketFound, nil)
 	}
-
-	i := 1
+	i := start + 1
 	for ; i < len(data); i++ {
 
 		i = skipWhitespace(data, i)
 		if i >= len(data) {
-			return i, syntaxErr(i, "end of stream reached searching a name for a name/value pair", nil)
+			return start, i, syntaxErr(i, endOfDataNoNamePair, nil)
+		}
+
+		if data[i] == '}' {
+			return start, i + 1, nil
 		}
 
 		// scan the name
 		pos, err := scanString(data, i)
 		if err != nil {
-			return i, syntaxErr(i, "expecting a name before a value, but ", err)
+			return start, i, syntaxErr(i, expectingNameBeforeValue, err)
 		}
 
 		// scan the separator
 		i = skipWhitespace(data, pos.To)
 		if i >= len(data) {
-			return i, syntaxErr(i, "end of stream reached searching a semi-colon between a name/value pair", nil)
+			return start, i, syntaxErr(i, endOfDataNoSemicolon, nil)
 		}
 
 		if data[i] != ':' {
-			return i, syntaxErr(i, "expecting a semi-colon between names and values", nil)
+			return start, i, syntaxErr(i, noSemicolonFound, nil)
 		}
+		i++
 		i = skipWhitespace(data, i)
 		if i >= len(data) {
-			return i, syntaxErr(i, "end of stream reached searching a value for a name/value pair", nil)
+			return start, i, syntaxErr(i, endOfDataNoSemicolon, nil)
 		}
 
 		// decide if the value is a number, string, bool or null
@@ -96,7 +119,7 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 		if b == '-' || (b >= '0' && b <= '9') {
 			val, j, err := scanNumber(data, i)
 			if err != nil {
-				return i, syntaxErr(i, "found beginning of a number value, but", err)
+				return start, i, syntaxErr(i, beginNumberValueButError, err)
 			}
 			onNumber(Number{Name: pos, Value: val})
 			i = j
@@ -104,10 +127,17 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 		} else if b == '"' { // strings
 			valPos, err := scanString(data, i)
 			if err != nil {
-				return i, syntaxErr(i, "found beginning of a string value, but ", err)
+				return start, i, syntaxErr(i, beginStringValueButError, err)
 			}
+
+			log.Printf("name=%s, i=%d (%c%c%c)", pos.String(data), i,
+				data[i-1], data[i], data[i+1])
+
 			onString(String{Name: pos, Value: valPos})
 			i = valPos.To
+
+			log.Printf("name=%s, i=%d (%c%c)", pos.String(data), i,
+				data[i-1], data[i])
 
 		} else if i+3 < len(data) &&
 			b == 't' &&
@@ -138,7 +168,7 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 			i += 4
 
 		} else {
-			return i, syntaxErr(i, "expected value, but was neither a number, string, bool or null", nil)
+			return start, i, syntaxErr(i, expectValueButNoKnownType, nil)
 		}
 
 		i = skipWhitespace(data, i)
@@ -147,15 +177,17 @@ func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean b
 				// more values to come
 				// TODO(antoine): be kind and accept trailing commas
 			} else if data[i] == '}' {
-				return i + 1, nil
+				return start, i + 1, nil
+			} else {
+				return start, i + 1, syntaxErr(i+1, needCommaOrClosingBracket, nil)
 			}
 		}
 	}
-	return i, syntaxErr(i, "end of stream reached and end of object not found", nil)
+	return start, i, syntaxErr(i, endOfDataNoClosingBracket, nil)
 }
 
 const (
-	reachedEndScanningCharacters = "reached end of stream scanning characters"
+	reachedEndScanningCharacters = "reached end of data scanning characters"
 	unicodeNotFollowHex          = "unicode escape code is followed by non-hex characters"
 )
 
@@ -205,7 +237,7 @@ func scanString(data []byte, i int) (Pos, *SyntaxError) {
 }
 
 const (
-	reachedEndScanningNumber = "reached end of stream scanning a number"
+	reachedEndScanningNumber = "reached end of data scanning a number"
 	cantFindIntegerPart      = "could not find an integer part"
 	scanningForFraction      = "scanning for a fraction"
 	scanningForExponent      = "scanning for an exponent"
@@ -303,7 +335,7 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 
 const (
 	needAtLeastOneDigit     = "need at least one digit"
-	reachedEndScanningDigit = "reached end of stream scanning digits"
+	reachedEndScanningDigit = "reached end of data scanning digits"
 )
 
 // scanDigits reads an integer value from data and advances i one-past

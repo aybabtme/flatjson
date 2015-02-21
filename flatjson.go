@@ -1,5 +1,9 @@
 package flatjson
 
+import (
+	"math"
+)
+
 type Pos struct {
 	From int
 	To   int
@@ -29,6 +33,8 @@ type (
 	nullDec    func(Null)
 )
 
+// scan objects according to the spec at http://www.json.org/
+// but ignoring nested objects and arrays
 func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean booleanDec, onNull nullDec) (int, error) {
 
 	if data[0] != '{' {
@@ -148,6 +154,9 @@ func (s *SyntaxError) Error() string {
 	return s.Message + ", " + s.SubErr.Error()
 }
 
+// scanString reads a JSON string *position* in data. the `To` position
+// is one-past where it last found a string component
+// it does not deal with whitespace.
 func scanString(data []byte, i int) (Pos, *SyntaxError) {
 	from := i
 	to := i + 1
@@ -178,27 +187,35 @@ func scanString(data []byte, i int) (Pos, *SyntaxError) {
 	return Pos{}, syntaxErr(i, "reached end of stream scanning characters", nil)
 }
 
+// scanNumber reads a JSON number value from data and advances i one past
+// the last number component it found
+// it does not deal with whitespace
 func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 
-	isNeg := data[i] == '-'
-	if isNeg {
+	sign := 1.0
+	if data[i] == '-' {
+		sign = -sign
 		i++
 	}
 
 	var v float64
 	var err *SyntaxError
 
-	// scan an integer in base 10
+	// scan an integer
 	b := data[i]
 	if b == '0' {
 		i++
-	} else if b >= '1' && b <= 9 {
+	} else if b >= '1' && b <= '9' {
 		v, i, err = scanDigits(data, i)
 		if err != nil {
-			return v, i, err
+			return sign * v, i, err
 		}
 	} else {
-		return v, i, syntaxErr(i, "could not find an integer part", nil)
+		return sign * v, i, syntaxErr(i, "could not find an integer part", nil)
+	}
+
+	if i >= len(data) {
+		return sign * v, i, nil
 	}
 
 	// scan fraction
@@ -207,13 +224,16 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 		var frac float64
 		frac, i, err = scanDigits(data, i)
 		if err != nil {
-			return v, i, syntaxErr(i, "scanning for a fraction, ", err)
+			return sign * v, i, syntaxErr(i, "scanning for a fraction, ", err)
 		}
 		// scale down the digits of the fraction
-		for frac > 0 {
-			frac /= 10.0
-		}
-		v += frac
+		powBase10 := math.Ceil(math.Log10(frac))
+		magnitude := math.Pow(10.0, powBase10)
+		v += frac / magnitude
+	}
+
+	if i >= len(data) {
+		return sign * v, i, nil
 	}
 
 	// scan an exponent
@@ -234,7 +254,7 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 		var exp float64
 		exp, i, err = scanDigits(data, i)
 		if err != nil {
-			return v, i, syntaxErr(i, "scanning for an exponent, ", err)
+			return sign * v, i, syntaxErr(i, "scanning for an exponent, ", err)
 		}
 		// scale up or down the value
 		for j := 0; j < int(exp); j++ {
@@ -246,20 +266,28 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 		}
 	}
 
-	if isNeg {
-		v = -v
-	}
-
-	return v, i, nil
+	return sign * v, i, nil
 }
 
+const (
+	needAtLeastOneDigit     = "need at least one digit"
+	reachedEndScanningDigit = "reached end of stream scanning digits"
+)
+
+// scanDigits reads an integer value from data and advances i one-past
+// the last digit component of data.
+// it does not deal with whitespace
 func scanDigits(data []byte, i int) (float64, int, *SyntaxError) {
 	// digits := (digit | digit digits)
 
+	if i >= len(data) {
+		return 0, i, syntaxErr(i, reachedEndScanningDigit, nil)
+	}
+
 	// scan one digit
 	b := data[i]
-	if b < '0' && b > '9' {
-		return 0, i, syntaxErr(i, "need at least one digit", nil)
+	if b < '0' || b > '9' {
+		return 0, i, syntaxErr(i, needAtLeastOneDigit, nil)
 	}
 	v := float64(b - '0')
 
@@ -271,23 +299,27 @@ func scanDigits(data []byte, i int) (float64, int, *SyntaxError) {
 
 	// scan one or many digits
 	for j, b := range data[i:] {
-		if b < '0' && b > '9' {
+		if b < '0' || b > '9' {
 			return v, i + j, nil
 		}
+		ival := int(b - '0')
 		v *= 10
-		v += float64(b - '0')
+		v += float64(ival)
 	}
 
 	i = len(data)
-	return v, i, syntaxErr(i, "reached end of stream scanning digits", nil)
+	return v, i, nil
 }
 
+// skipWhitespace advances i until a non-whitespace character is
+// found.
 func skipWhitespace(data []byte, i int) int {
 	for ; i < len(data); i++ {
 		b := data[i]
 		if b != ' ' &&
 			b != '\t' &&
-			b != '\n' {
+			b != '\n' &&
+			b != '\r' {
 			return i
 		}
 	}

@@ -13,7 +13,7 @@ func BenchmarkFlatJSON(b *testing.B) {
 	b.ResetTimer()
 	for i, line := range lines {
 		b.SetBytes(int64(len(line)))
-		_, _, err := scanObject(line, func(num Number) {
+		_, _, err := ScanObject(line, func(num Number) {
 			// dont care
 		}, func(str String) {
 			// dont care

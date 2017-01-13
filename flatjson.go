@@ -52,10 +52,14 @@ type Bool struct {
 type Null struct{ Name Pos }
 
 type (
-	numberDec  func(Number)
-	stringDec  func(String)
-	booleanDec func(Bool)
-	nullDec    func(Null)
+	NumberDec  func(Number)
+	StringDec  func(String)
+	BooleanDec func(Bool)
+	NullDec    func(Null)
+
+	// TODO: add support for scanning nested objects and arrays
+	// or at least accepting their presence and maybe validating
+	// that they are well formed
 )
 
 const (
@@ -74,9 +78,7 @@ const (
 
 // scan objects according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
-func scanObject(data []byte, onNumber numberDec, onString stringDec, onBoolean booleanDec, onNull nullDec) (start int, stop int, err error) {
-
-	start = skipWhitespace(data, 0)
+func ScanObject(data []byte, onNumber NumberDec, onString StringDec, onBoolean BooleanDec, onNull NullDec) (start int, stop int, err error) {
 
 	if len(data) == 0 || data[start] != '{' {
 		return start, start, syntaxErr(start, noOpeningBracketFound, nil)

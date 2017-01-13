@@ -302,7 +302,7 @@ func TestScanObjects(t *testing.T) {
 			})
 		}
 
-		start, end, err := scanObject([]byte(data), onNumber, onString, onBool, onNull)
+		start, end, err := ScanObject([]byte(data), onNumber, onString, onBool, onNull)
 
 		gotErr, _ := err.(*SyntaxError)
 

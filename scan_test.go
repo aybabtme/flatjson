@@ -97,32 +97,32 @@ func TestScanStrings(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Logf("====> %s", tt.Name)
+		t.Run(tt.Name, func(t *testing.T) {
 
-		gotVal, gotErr := scanString([]byte(tt.Data), tt.Start)
+			gotVal, gotErr := ScanString([]byte(tt.Data), tt.Start)
 
-		// if we expect errors
-		if tt.WantErrError != "" && gotErr == nil {
-			t.Errorf("want an error, got none")
-		} else if tt.WantErrError != "" && gotErr != nil {
-			wantOffset := tt.WantErrOffset
-			if wantOffset != gotErr.Offset {
-				t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
+			// if we expect errors
+			if tt.WantErrError != "" && gotErr == nil {
+				t.Errorf("want an error, got none")
+			} else if tt.WantErrError != "" && gotErr != nil {
+				wantOffset := tt.WantErrOffset
+				if wantOffset != gotErr.Offset {
+					t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
+				}
+				if want, got := tt.WantErrError, gotErr.Error(); want != got {
+					t.Errorf("want error: %q", want)
+					t.Errorf(" got error: %q", got)
+				}
+			} else if gotErr != nil {
+				t.Errorf("offset=%d", gotErr.Offset)
+				t.Error(gotErr)
 			}
-			if want, got := tt.WantErrError, gotErr.Error(); want != got {
-				t.Errorf("want error: %q", want)
-				t.Errorf(" got error: %q", got)
-			}
-			continue
-		} else if gotErr != nil {
-			t.Errorf("offset=%d", gotErr.Offset)
-			t.Error(gotErr)
-		}
 
-		if want, got := tt.WantVal, gotVal; want != got {
-			t.Errorf("want val %+v", want)
-			t.Errorf(" got val %+v", got)
-		}
+			if want, got := tt.WantVal, gotVal; want != got {
+				t.Errorf("want val %+v", want)
+				t.Errorf(" got val %+v", got)
+			}
+		})
 	}
 }
 
@@ -213,23 +213,22 @@ func TestScanNumbersErrors(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Logf("====> %s", tt.Name)
+		t.Run(tt.Name, func(t *testing.T) {
+			_, _, gotErr := ScanNumber([]byte(tt.Data), tt.Start)
 
-		_, _, gotErr := scanNumber([]byte(tt.Data), tt.Start)
+			if tt.WantErrError != "" && gotErr == nil {
+				t.Fatalf("want an error, got none")
+			}
 
-		if tt.WantErrError != "" && gotErr == nil {
-			t.Errorf("want an error, got none")
-			continue
-		}
-
-		wantOffset := tt.WantErrOffset
-		if wantOffset != gotErr.Offset {
-			t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
-		}
-		if want, got := tt.WantErrError, gotErr.Error(); want != got {
-			t.Errorf("want error: %q", want)
-			t.Errorf(" got error: %q", got)
-		}
+			wantOffset := tt.WantErrOffset
+			if wantOffset != gotErr.Offset {
+				t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
+			}
+			if want, got := tt.WantErrError, gotErr.Error(); want != got {
+				t.Errorf("want error: %q", want)
+				t.Errorf(" got error: %q", got)
+			}
+		})
 	}
 }
 
@@ -669,22 +668,21 @@ func TestScanNumbersNoError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Logf("====> %s", tt.Name)
+		t.Run(tt.Name, func(t *testing.T) {
+			gotVal, gotEnd, gotErr := ScanNumber([]byte(tt.Data), tt.Start)
 
-		gotVal, gotEnd, gotErr := scanNumber([]byte(tt.Data), tt.Start)
+			if gotErr != nil {
+				t.Fatal(gotErr)
+			}
 
-		if gotErr != nil {
-			t.Error(gotErr)
-			continue
-		}
-
-		if want, got := tt.WantEnd, gotEnd; want != got {
-			t.Errorf("want advance to %d, got %d", want, got)
-		}
-		if want, got := tt.WantVal, gotVal; !fequal(want, got) {
-			t.Errorf("want val %v", want)
-			t.Errorf(" got val %v", got)
-		}
+			if want, got := tt.WantEnd, gotEnd; want != got {
+				t.Errorf("want advance to %d, got %d", want, got)
+			}
+			if want, got := tt.WantVal, gotVal; !fequal(want, got) {
+				t.Errorf("want val %v", want)
+				t.Errorf(" got val %v", got)
+			}
+		})
 	}
 }
 
@@ -794,7 +792,6 @@ func TestScanDigits(t *testing.T) {
 				t.Errorf("want error: %q", want)
 				t.Errorf(" got error: %q", got)
 			}
-			continue
 		} else if gotErr != nil {
 			t.Error(gotErr)
 		}

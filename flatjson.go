@@ -57,11 +57,9 @@ type (
 	BooleanDec func(Bool)
 	NullDec    func(Null)
 
-	// TODO: add support for scanning nested objects and arrays
-	// or at least accepting their presence and maybe validating
-	// that they are well formed
-	ObjectDec func(name Pos, cb *Callbacks)
-	ArrayDec  func(*Callbacks)
+	// TODO: not supported yet
+	objectDec func(name Pos, cb *Callbacks)
+	arrayDec  func(*Callbacks)
 )
 
 type Callbacks struct {
@@ -69,8 +67,10 @@ type Callbacks struct {
 	OnString  StringDec
 	OnBoolean BooleanDec
 	OnNull    NullDec
-	OnObject  ObjectDec
-	OnArray   ArrayDec
+
+	// TODO: not supported yet
+	onObject objectDec
+	onArray  arrayDec
 }
 
 const (
@@ -124,7 +124,7 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 		b := data[i]
 
 		if b == '"' { // strings
-			valPos, err := scanString(data, i)
+			valPos, err := ScanString(data, i)
 			if err != nil {
 				return pos, syntaxErr(i, beginStringValueButError, err)
 			}
@@ -142,14 +142,14 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 			i = valPos.To
 
 		} else if b == '[' { // arrays
-			valPos, err := scanArray(data, i, nil) // TODO: fix recursion
+			valPos, err := ScanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
 				return Pos{}, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
 			}
 			i = valPos.To
 
 		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
-			val, j, err := scanNumber(data, i)
+			val, j, err := ScanNumber(data, i)
 			if err != nil {
 				return pos, syntaxErr(i, beginNumberValueButError, err)
 			}
@@ -218,10 +218,10 @@ const (
 	unicodeNotFollowHex          = "unicode escape code is followed by non-hex characters"
 )
 
-// scanString reads a JSON string *position* in data. the `To` position
-// is one-past where it last found a string component
-// it does not deal with whitespace.
-func scanString(data []byte, i int) (Pos, *SyntaxError) {
+// ScanString reads a JSON string *position* in data. the `To` position
+// is one-past where it last found a string component.
+// It does not deal with whitespace.
+func ScanString(data []byte, i int) (Pos, *SyntaxError) {
 	from := i
 	to := i + 1
 	for ; to < len(data); to++ {
@@ -271,10 +271,9 @@ const (
 	scanningForExponentSign  = "scanning for an exponent's sign"
 )
 
-// scanNumber reads a JSON number value from data and advances i one past
-// the last number component it found
-// it does not deal with whitespace
-func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
+// ScanNumber reads a JSON number value from data and advances i one past
+// the last number component it found. It does not deal with whitespace.
+func ScanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 
 	if i >= len(data) {
 		return 0, i, syntaxErr(i, reachedEndScanningNumber, nil)

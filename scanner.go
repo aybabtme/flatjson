@@ -2,7 +2,7 @@ package flatjson
 
 func scanPairName(data []byte, from int) (Pos, int, *SyntaxError) {
 	// scan the name
-	pos, err := scanString(data, from)
+	pos, err := ScanString(data, from)
 	if err != nil {
 		return pos, 0, syntaxErr(from, expectingNameBeforeValue, err)
 	}
@@ -34,9 +34,9 @@ func scanSeparator(data []byte, from int) (int, *SyntaxError) {
 
 // wip
 
-// scanArray according to the spec at http://www.json.org/
+// ScanArray according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
-func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
+func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 	pos.From, pos.To = -1, -1
 	start := skipWhitespace(data, from)
 	if len(data) == 0 || data[start] != '[' {
@@ -58,7 +58,7 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 		b := data[i]
 
 		if b == '"' { // strings
-			valPos, err := scanString(data, i)
+			valPos, err := ScanString(data, i)
 			if err != nil {
 				return pos, syntaxErr(i, beginStringValueButError, err)
 			}
@@ -76,14 +76,14 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 			i = valPos.To
 
 		} else if b == '[' { // arrays
-			valPos, err := scanArray(data, i, nil) // TODO: fix recursion
+			valPos, err := ScanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
 				return Pos{}, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
 			}
 			i = valPos.To
 
 		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
-			val, j, err := scanNumber(data, i)
+			val, j, err := ScanNumber(data, i)
 			if err != nil {
 				return pos, syntaxErr(i, beginNumberValueButError, err)
 			}

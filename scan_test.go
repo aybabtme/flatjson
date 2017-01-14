@@ -871,10 +871,11 @@ func TestSkipWhitespace(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Logf("====> %s", tt.Name)
-		want, got := tt.WantEnd, skipWhitespace([]byte(tt.Data), tt.Start)
-		if want != got {
-			t.Errorf("want advance to %d, got %d", want, got)
-		}
+		t.Run(tt.Name, func(t *testing.T) {
+			want, got := tt.WantEnd, skipWhitespace([]byte(tt.Data), tt.Start)
+			if want != got {
+				t.Errorf("want advance to %d, got %d", want, got)
+			}
+		})
 	}
 }

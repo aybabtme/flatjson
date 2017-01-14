@@ -60,118 +60,143 @@ type (
 	// TODO: add support for scanning nested objects and arrays
 	// or at least accepting their presence and maybe validating
 	// that they are well formed
+	ObjectDec func(name Pos, cb *Callbacks)
+	ArrayDec  func(*Callbacks)
 )
+
+type Callbacks struct {
+	OnNumber  NumberDec
+	OnString  StringDec
+	OnBoolean BooleanDec
+	OnNull    NullDec
+	OnObject  ObjectDec
+	OnArray   ArrayDec
+}
 
 const (
 	noOpeningBracketFound     = "doesn't begin with a `{`"
 	endOfDataNoNamePair       = "end of data reached searching a name for a name/value pair"
 	expectingNameBeforeValue  = "expecting a name before a value"
-	endOfDataNoSemicolon      = "end of data reached searching a semi-colon between a name/value pair"
-	noSemicolonFound          = "expecting a semi-colon between names and values"
-	endOfDataNoValue          = "end of data reached searching a value for a name/value pair"
+	endOfDataNoColon          = "end of data reached searching a colon between a name/value pair"
+	noColonFound              = "expecting a colon between names and values"
+	endOfDataNoValueForName   = "end of data reached searching a value for a name/value pair"
 	beginNumberValueButError  = "found beginning of a number value"
 	beginStringValueButError  = "found beginning of a string value"
 	expectValueButNoKnownType = "expected value, but was neither a number, string, bool or null"
 	endOfDataNoClosingBracket = "end of data reached and end of object not found"
 	malformedNumber           = "number value in name/value pair is malformed"
+
+	noOpeningSquareBracketFound = "doesn't begin with a `[`"
+	beginObjectValueButError    = "found beginning of an object value"
+	beginArrayValueButError     = "found beginning of an array value"
+	endOfDataNoValue            = "end of data reached searching a value"
 )
 
-// scan objects according to the spec at http://www.json.org/
+// ScanObject according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
-func ScanObject(data []byte, onNumber NumberDec, onString StringDec, onBoolean BooleanDec, onNull NullDec) (start int, stop int, err error) {
-
+func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
+	pos.From, pos.To = -1, -1
+	start := skipWhitespace(data, from)
 	if len(data) == 0 || data[start] != '{' {
-		return start, start, syntaxErr(start, noOpeningBracketFound, nil)
+		return pos, syntaxErr(start, noOpeningBracketFound, nil)
 	}
 	i := start + 1
 	for ; i < len(data); i++ {
 
 		i = skipWhitespace(data, i)
 		if i >= len(data) {
-			return start, i, syntaxErr(i, endOfDataNoNamePair, nil)
+			return pos, syntaxErr(i, endOfDataNoNamePair, nil)
 		}
 
 		if data[i] == '}' {
-			return start, i + 1, nil
+			return Pos{start, i + 1}, nil
 		}
 
 		// scan the name
-		pos, err := scanString(data, i)
+		pos, j, err := scanPairName(data, i)
 		if err != nil {
-			return start, i, syntaxErr(i, expectingNameBeforeValue, err)
+			return pos, err
 		}
+		i = j
 
-		// scan the separator
-		i = skipWhitespace(data, pos.To)
-		if i >= len(data) {
-			return start, i, syntaxErr(i, endOfDataNoSemicolon, nil)
-		}
-
-		if data[i] != ':' {
-			return start, i, syntaxErr(i, noSemicolonFound, nil)
-		}
-		i++
-		i = skipWhitespace(data, i)
-		if i >= len(data) {
-			return start, i, syntaxErr(i, endOfDataNoValue, nil)
-		}
-
-		// decide if the value is a number, string, bool or null
+		// decide if the value is a number, string, object, array, bool or null
 		b := data[i]
 
-		if b == '-' || (b >= '0' && b <= '9') {
+		if b == '"' { // strings
+			valPos, err := scanString(data, i)
+			if err != nil {
+				return pos, syntaxErr(i, beginStringValueButError, err)
+			}
+
+			if cb != nil && cb.OnString != nil {
+				cb.OnString(String{Name: pos, Value: valPos})
+			}
+			i = valPos.To
+
+		} else if b == '{' { // objects
+			valPos, err := ScanObject(data, i, nil) // TODO: fix recursion
+			if err != nil {
+				return Pos{}, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
+			}
+			i = valPos.To
+
+		} else if b == '[' { // arrays
+			valPos, err := scanArray(data, i, nil) // TODO: fix recursion
+			if err != nil {
+				return Pos{}, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
+			}
+			i = valPos.To
+
+		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
 			val, j, err := scanNumber(data, i)
 			if err != nil {
-				return start, i, syntaxErr(i, beginNumberValueButError, err)
+				return pos, syntaxErr(i, beginNumberValueButError, err)
 			}
 			j = skipWhitespace(data, j)
 			if j < len(data) && data[j] != ',' && data[j] != '}' {
-				return start, j, syntaxErr(i, malformedNumber, nil)
+				return pos, syntaxErr(i, malformedNumber, nil)
 			}
-			onNumber(Number{Name: pos, Value: val})
-
+			if cb != nil && cb.OnNumber != nil {
+				cb.OnNumber(Number{Name: pos, Value: val})
+			}
 			i = j
 
-		} else if b == '"' { // strings
-			valPos, err := scanString(data, i)
-			if err != nil {
-				return start, i, syntaxErr(i, beginStringValueButError, err)
-			}
-
-			onString(String{Name: pos, Value: valPos})
-			i = valPos.To
-
-		} else if i+3 < len(data) &&
+		} else if i+3 < len(data) && // bool - true case
 			b == 't' &&
 			data[i+1] == 'r' &&
 			data[i+2] == 'u' &&
 			data[i+3] == 'e' {
 
-			onBoolean(Bool{Name: pos, Value: true})
+			if cb != nil && cb.OnBoolean != nil {
+				cb.OnBoolean(Bool{Name: pos, Value: true})
+			}
 			i += 4
 
-		} else if i+4 < len(data) &&
+		} else if i+4 < len(data) && // bool - false case
 			b == 'f' &&
 			data[i+1] == 'a' &&
 			data[i+2] == 'l' &&
 			data[i+3] == 's' &&
 			data[i+4] == 'e' {
 
-			onBoolean(Bool{Name: pos, Value: false})
+			if cb != nil && cb.OnBoolean != nil {
+				cb.OnBoolean(Bool{Name: pos, Value: false})
+			}
 			i += 5
 
-		} else if i+3 < len(data) &&
+		} else if i+3 < len(data) && // null
 			b == 'n' &&
 			data[i+1] == 'u' &&
 			data[i+2] == 'l' &&
 			data[i+3] == 'l' {
 
-			onNull(Null{Name: pos})
+			if cb != nil && cb.OnNull != nil {
+				cb.OnNull(Null{Name: pos})
+			}
 			i += 4
 
 		} else {
-
-			return start, i, syntaxErr(i, expectValueButNoKnownType, nil)
+			return pos, syntaxErr(i, expectValueButNoKnownType, nil)
 		}
 
 		i = skipWhitespace(data, i)
@@ -180,11 +205,11 @@ func ScanObject(data []byte, onNumber NumberDec, onString StringDec, onBoolean B
 				// more values to come
 				// TODO(antoine): be kind and accept trailing commas
 			} else if data[i] == '}' {
-				return start, i + 1, nil
+				return Pos{start, i + 1}, nil
 			}
 		}
 	}
-	return start, i, syntaxErr(i, endOfDataNoClosingBracket, nil)
+	return pos, syntaxErr(i, endOfDataNoClosingBracket, nil)
 }
 
 const (

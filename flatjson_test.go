@@ -11,8 +11,7 @@ func TestScanObjects(t *testing.T) {
 
 		Data string
 
-		WantStart int
-		WantEnd   int
+		WantPos Pos
 
 		WantNumber []tnumber
 		WantString []tstring
@@ -25,62 +24,55 @@ func TestScanObjects(t *testing.T) {
 
 		// happy path
 		{
-			Name:      "empty object",
-			Data:      `{}`,
-			WantStart: 0,
-			WantEnd:   2,
+			Name:    "empty object",
+			Data:    `{}`,
+			WantPos: Pos{0, 2},
 		},
 		{
-			Name:      "simple string object",
-			Data:      `{"hello":"world"}`,
-			WantStart: 0,
-			WantEnd:   17,
+			Name:    "simple string object",
+			Data:    `{"hello":"world"}`,
+			WantPos: Pos{0, 17},
 			WantString: []tstring{
 				{name: `"hello"`, value: `"world"`},
 			},
 		},
 		{
-			Name:      "simple number object",
-			Data:      `{"hello":-49.14159e-2}`,
-			WantStart: 0,
-			WantEnd:   22,
+			Name:    "simple number object",
+			Data:    `{"hello":-49.14159e-2}`,
+			WantPos: Pos{0, 22},
 			WantNumber: []tnumber{
 				{name: `"hello"`, value: -49.14159e-2},
 			},
 		},
 		{
-			Name:      "simple true bool object",
-			Data:      `{"hello":true}`,
-			WantStart: 0,
-			WantEnd:   14,
+			Name:    "simple true bool object",
+			Data:    `{"hello":true}`,
+			WantPos: Pos{0, 14},
 			WantBool: []tbool{
 				{name: `"hello"`, value: true},
 			},
 		},
 		{
-			Name:      "simple false bool object",
-			Data:      `{"hello":false}`,
-			WantStart: 0,
-			WantEnd:   15,
+			Name:    "simple false bool object",
+			Data:    `{"hello":false}`,
+			WantPos: Pos{0, 15},
 			WantBool: []tbool{
 				{name: `"hello"`, value: false},
 			},
 		},
 		{
-			Name:      "simple null object",
-			Data:      `{"hello":null}`,
-			WantStart: 0,
-			WantEnd:   14,
+			Name:    "simple null object",
+			Data:    `{"hello":null}`,
+			WantPos: Pos{0, 14},
 			WantNull: []tnull{
 				{name: `"hello"`},
 			},
 		},
 
 		{
-			Name:      "simple composite object",
-			Data:      `{"a":"1","b":2,"c":true,"d":false,"e":null}`,
-			WantStart: 0,
-			WantEnd:   43,
+			Name:    "simple composite object",
+			Data:    `{"a":"1","b":2,"c":true,"d":false,"e":null}`,
+			WantPos: Pos{0, 43},
 			WantString: []tstring{
 				{name: `"a"`, value: `"1"`},
 			},
@@ -106,8 +98,7 @@ func TestScanObjects(t *testing.T) {
                 "d" :   false,
                 "e":    null
 }`,
-			WantStart: 13,
-			WantEnd:   162,
+			WantPos: Pos{13, 162},
 			WantString: []tstring{
 				{name: `"a"`, value: `"1"`},
 			},
@@ -134,8 +125,7 @@ func TestScanObjects(t *testing.T) {
                 ,
                 "e":    null
 }`,
-			WantStart: 13,
-			WantEnd:   177,
+			WantPos: Pos{13, 177},
 			WantString: []tstring{
 				{name: `"a"`, value: `"1"`},
 			},
@@ -160,8 +150,7 @@ func TestScanObjects(t *testing.T) {
     }
 
 `,
-			WantStart: 5,
-			WantEnd:   13,
+			WantPos: Pos{5, 13},
 		},
 
 		// errors
@@ -220,21 +209,21 @@ func TestScanObjects(t *testing.T) {
 			WantErrOffset: 1,
 		},
 		{
-			Name:          "missing semicolon in name/value pair",
+			Name:          "missing colon in name/value pair",
 			Data:          `{"hello" true, `,
-			WantErrError:  noSemicolonFound,
+			WantErrError:  noColonFound,
 			WantErrOffset: 9,
 		},
 		{
 			Name:          "nothing follows the name",
 			Data:          `{"hello" `,
-			WantErrError:  endOfDataNoSemicolon,
+			WantErrError:  endOfDataNoColon,
 			WantErrOffset: 9,
 		},
 		{
-			Name:          "nothing follows the semicolon",
+			Name:          "nothing follows the colon",
 			Data:          `{"hello": `,
-			WantErrError:  endOfDataNoValue,
+			WantErrError:  endOfDataNoValueForName,
 			WantErrOffset: 10,
 		},
 		{
@@ -302,7 +291,12 @@ func TestScanObjects(t *testing.T) {
 			})
 		}
 
-		start, end, err := ScanObject([]byte(data), onNumber, onString, onBool, onNull)
+		pos, err := ScanObject([]byte(data), 0, &Callbacks{
+			OnNumber:  onNumber,
+			OnString:  onString,
+			OnBoolean: onBool,
+			OnNull:    onNull,
+		})
 
 		gotErr, _ := err.(*SyntaxError)
 
@@ -323,14 +317,9 @@ func TestScanObjects(t *testing.T) {
 			t.Error(gotErr)
 		} else {
 
-			if want, got := tt.WantStart, start; want != got {
-				t.Errorf("want start %+v", want)
-				t.Errorf(" got start %+v", got)
-			}
-
-			if want, got := tt.WantEnd, end; want != got {
-				t.Errorf("want end %+v", want)
-				t.Errorf(" got end %+v", got)
+			if want, got := tt.WantPos, pos; want != got {
+				t.Errorf("want position %+v", want)
+				t.Errorf(" got position %+v", got)
 			}
 
 			if want, got := tt.WantNumber, gotNumber; !reflect.DeepEqual(want, got) {

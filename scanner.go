@@ -40,7 +40,7 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 	pos.From, pos.To = -1, -1
 	start := skipWhitespace(data, from)
 	if len(data) == 0 || data[start] != '[' {
-		return pos, syntaxErr(start, noOpeningBracketFound, nil)
+		return pos, syntaxErr(start, noOpeningSquareBracketFound, nil)
 	}
 	i := start + 1
 	for ; i < len(data); i++ {
@@ -144,5 +144,5 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 			}
 		}
 	}
-	return pos, syntaxErr(i, endOfDataNoClosingBracket, nil)
+	return pos, syntaxErr(i, endOfDataNoClosingSquareBracket, nil)
 }

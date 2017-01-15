@@ -2,7 +2,7 @@ package flatjson
 
 func scanPairName(data []byte, from int) (Pos, int, *SyntaxError) {
 	// scan the name
-	pos, err := ScanString(data, from)
+	pos, err := scanString(data, from)
 	if err != nil {
 		return pos, 0, syntaxErr(from, expectingNameBeforeValue, err)
 	}
@@ -36,31 +36,31 @@ func scanSeparator(data []byte, from int) (int, *SyntaxError) {
 
 // ScanArray according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
-func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
+func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err error) {
 	pos.From, pos.To = -1, -1
 	start := skipWhitespace(data, from)
 	if len(data) == 0 || data[start] != '[' {
-		return pos, syntaxErr(start, noOpeningSquareBracketFound, nil)
+		return pos, false, syntaxErr(start, noOpeningSquareBracketFound, nil)
 	}
 	i := start + 1
 	for ; i < len(data); i++ {
 
 		i = skipWhitespace(data, i)
 		if i >= len(data) {
-			return pos, syntaxErr(i, endOfDataNoNamePair, nil)
+			return pos, false, syntaxErr(i, endOfDataNoNamePair, nil)
 		}
 
 		if data[i] == ']' {
-			return Pos{start, i + 1}, nil
+			return Pos{start, i + 1}, true, nil
 		}
 
 		// decide if the value is a number, string, object, array, bool or null
 		b := data[i]
 
 		if b == '"' { // strings
-			valPos, err := ScanString(data, i)
+			valPos, err := scanString(data, i)
 			if err != nil {
-				return pos, syntaxErr(i, beginStringValueButError, err)
+				return pos, false, syntaxErr(i, beginStringValueButError, err)
 			}
 
 			if cb != nil && cb.OnString != nil {
@@ -69,27 +69,31 @@ func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 			i = valPos.To
 
 		} else if b == '{' { // objects
-			valPos, err := ScanObject(data, i, nil) // TODO: fix recursion
+			valPos, found, err := ScanObject(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
+			} else if !found {
+				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '[' { // arrays
-			valPos, err := ScanArray(data, i, nil) // TODO: fix recursion
+			valPos, found, err := ScanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
+			} else if !found {
+				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
 			val, j, err := ScanNumber(data, i)
 			if err != nil {
-				return pos, syntaxErr(i, beginNumberValueButError, err)
+				return pos, false, syntaxErr(i, beginNumberValueButError, err)
 			}
 			j = skipWhitespace(data, j)
 			if j < len(data) && data[j] != ',' && data[j] != ']' {
-				return pos, syntaxErr(i, malformedNumber, nil)
+				return pos, false, syntaxErr(i, malformedNumber, nil)
 			}
 			if cb != nil && cb.OnNumber != nil {
 				cb.OnNumber(Number{Name: pos, Value: val})
@@ -131,7 +135,7 @@ func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 			i += 4
 
 		} else {
-			return pos, syntaxErr(i, expectValueButNoKnownType, nil)
+			return pos, false, syntaxErr(i, expectValueButNoKnownType, nil)
 		}
 
 		i = skipWhitespace(data, i)
@@ -140,9 +144,9 @@ func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 				// more values to come
 				// TODO(antoine): be kind and accept trailing commas
 			} else if data[i] == ']' {
-				return Pos{start, i + 1}, nil
+				return Pos{start, i + 1}, true, nil
 			}
 		}
 	}
-	return pos, syntaxErr(i, endOfDataNoClosingSquareBracket, nil)
+	return pos, false, syntaxErr(i, endOfDataNoClosingSquareBracket, nil)
 }

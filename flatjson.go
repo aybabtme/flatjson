@@ -1,6 +1,7 @@
 package flatjson
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -95,28 +96,38 @@ const (
 
 // ScanObject according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
-func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
+func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err error) {
+	if from < 0 {
+		panic(fmt.Sprintf("negative starting index %d", from))
+	} else if len(data) == 0 {
+		return Pos{}, false, nil
+	} else if from >= len(data) {
+		panic(fmt.Sprintf("starting index %d is larger than provided data len(%d)", from, len(data)))
+	}
 	pos.From, pos.To = -1, -1
 	start := skipWhitespace(data, from)
+	if len(data) == start {
+		return Pos{0, start}, false, nil
+	}
 	if len(data) == 0 || data[start] != '{' {
-		return pos, syntaxErr(start, noOpeningBracketFound, nil)
+		return pos, false, syntaxErr(start, noOpeningBracketFound, nil)
 	}
 	i := start + 1
 	for ; i < len(data); i++ {
 
 		i = skipWhitespace(data, i)
 		if i >= len(data) {
-			return pos, syntaxErr(i, endOfDataNoNamePair, nil)
+			return pos, false, syntaxErr(i, endOfDataNoNamePair, nil)
 		}
 
 		if data[i] == '}' {
-			return Pos{start, i + 1}, nil
+			return Pos{start, i + 1}, true, nil
 		}
 
 		// scan the name
 		pos, j, err := scanPairName(data, i)
 		if err != nil {
-			return pos, err
+			return pos, false, err
 		}
 		i = j
 
@@ -124,9 +135,9 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 		b := data[i]
 
 		if b == '"' { // strings
-			valPos, err := ScanString(data, i)
+			valPos, err := scanString(data, i)
 			if err != nil {
-				return pos, syntaxErr(i, beginStringValueButError, err)
+				return pos, false, syntaxErr(i, beginStringValueButError, err)
 			}
 
 			if cb != nil && cb.OnString != nil {
@@ -135,27 +146,31 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 			i = valPos.To
 
 		} else if b == '{' { // objects
-			valPos, err := ScanObject(data, i, nil) // TODO: fix recursion
+			valPos, found, err := ScanObject(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
+			} else if !found {
+				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '[' { // arrays
-			valPos, err := ScanArray(data, i, nil) // TODO: fix recursion
+			valPos, found, err := ScanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
+			} else if !found {
+				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
 			val, j, err := ScanNumber(data, i)
 			if err != nil {
-				return pos, syntaxErr(i, beginNumberValueButError, err)
+				return pos, false, syntaxErr(i, beginNumberValueButError, err)
 			}
 			j = skipWhitespace(data, j)
 			if j < len(data) && data[j] != ',' && data[j] != '}' {
-				return pos, syntaxErr(i, malformedNumber, nil)
+				return pos, false, syntaxErr(i, malformedNumber, nil)
 			}
 			if cb != nil && cb.OnNumber != nil {
 				cb.OnNumber(Number{Name: pos, Value: val})
@@ -197,7 +212,7 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 			i += 4
 
 		} else {
-			return pos, syntaxErr(i, expectValueButNoKnownType, nil)
+			return pos, false, syntaxErr(i, expectValueButNoKnownType, nil)
 		}
 
 		i = skipWhitespace(data, i)
@@ -206,11 +221,11 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, err error) {
 				// more values to come
 				// TODO(antoine): be kind and accept trailing commas
 			} else if data[i] == '}' {
-				return Pos{start, i + 1}, nil
+				return Pos{start, i + 1}, true, nil
 			}
 		}
 	}
-	return pos, syntaxErr(i, endOfDataNoClosingBracket, nil)
+	return pos, false, syntaxErr(i, endOfDataNoClosingBracket, nil)
 }
 
 const (
@@ -218,10 +233,10 @@ const (
 	unicodeNotFollowHex          = "unicode escape code is followed by non-hex characters"
 )
 
-// ScanString reads a JSON string *position* in data. the `To` position
+// scanString reads a JSON string *position* in data. the `To` position
 // is one-past where it last found a string component.
 // It does not deal with whitespace.
-func ScanString(data []byte, i int) (Pos, *SyntaxError) {
+func scanString(data []byte, i int) (Pos, *SyntaxError) {
 	from := i
 	to := i + 1
 	for ; to < len(data); to++ {
@@ -404,6 +419,9 @@ func scanDigits(data []byte, i int) (float64, int, *SyntaxError) {
 // skipWhitespace advances i until a non-whitespace character is
 // found.
 func skipWhitespace(data []byte, i int) int {
+	if i < 0 {
+		panic(fmt.Sprintf("negative i=%v", i))
+	}
 	for ; i < len(data); i++ {
 		b := data[i]
 		if b != ' ' &&

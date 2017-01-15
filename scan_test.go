@@ -99,7 +99,7 @@ func TestScanStrings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 
-			gotVal, gotErr := ScanString([]byte(tt.Data), tt.Start)
+			gotVal, gotErr := scanString([]byte(tt.Data), tt.Start)
 
 			// if we expect errors
 			if tt.WantErrError != "" && gotErr == nil {

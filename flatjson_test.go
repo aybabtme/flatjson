@@ -11,7 +11,8 @@ func TestScanObjects(t *testing.T) {
 
 		Data string
 
-		WantPos Pos
+		WantPos   Pos
+		WantFound bool
 
 		WantNumber []tnumber
 		WantString []tstring
@@ -24,9 +25,14 @@ func TestScanObjects(t *testing.T) {
 
 		// happy path
 		{
-			Name:    "empty object",
-			Data:    `{}`,
-			WantPos: Pos{0, 2},
+			Name: "empty string",
+			Data: ``,
+		},
+		{
+			Name:      "empty object",
+			Data:      `{}`,
+			WantPos:   Pos{0, 2},
+			WantFound: true,
 		},
 		{
 			Name:    "simple string object",
@@ -35,6 +41,7 @@ func TestScanObjects(t *testing.T) {
 			WantString: []tstring{
 				{name: `"hello"`, value: `"world"`},
 			},
+			WantFound: true,
 		},
 		{
 			Name:    "simple number object",
@@ -43,6 +50,7 @@ func TestScanObjects(t *testing.T) {
 			WantNumber: []tnumber{
 				{name: `"hello"`, value: -49.14159e-2},
 			},
+			WantFound: true,
 		},
 		{
 			Name:    "simple true bool object",
@@ -51,6 +59,7 @@ func TestScanObjects(t *testing.T) {
 			WantBool: []tbool{
 				{name: `"hello"`, value: true},
 			},
+			WantFound: true,
 		},
 		{
 			Name:    "simple false bool object",
@@ -59,6 +68,7 @@ func TestScanObjects(t *testing.T) {
 			WantBool: []tbool{
 				{name: `"hello"`, value: false},
 			},
+			WantFound: true,
 		},
 		{
 			Name:    "simple null object",
@@ -67,6 +77,7 @@ func TestScanObjects(t *testing.T) {
 			WantNull: []tnull{
 				{name: `"hello"`},
 			},
+			WantFound: true,
 		},
 
 		{
@@ -86,6 +97,7 @@ func TestScanObjects(t *testing.T) {
 			WantNull: []tnull{
 				{name: `"e"`},
 			},
+			WantFound: true,
 		},
 
 		{
@@ -114,6 +126,7 @@ func TestScanObjects(t *testing.T) {
 			WantNull: []tnull{
 				{name: `"e"`},
 			},
+			WantFound: true,
 		},
 
 		{
@@ -143,6 +156,7 @@ func TestScanObjects(t *testing.T) {
 			WantNull: []tnull{
 				{name: `"e"`},
 			},
+			WantFound: true,
 		},
 
 		// special cases
@@ -154,15 +168,11 @@ func TestScanObjects(t *testing.T) {
     }
 
 `,
-			WantPos: Pos{5, 13},
+			WantPos:   Pos{5, 13},
+			WantFound: true,
 		},
 
 		// errors
-		{
-			Name:         "empty string",
-			Data:         ``,
-			WantErrError: noOpeningBracketFound,
-		},
 		{
 			Name:          "only opening brakcet",
 			Data:          `{`,
@@ -336,7 +346,7 @@ func TestScanObjects(t *testing.T) {
 				})
 			}
 
-			pos, err := ScanObject([]byte(data), 0, &Callbacks{
+			pos, found, err := ScanObject([]byte(data), 0, &Callbacks{
 				OnNumber:  onNumber,
 				OnString:  onString,
 				OnBoolean: onBool,
@@ -344,6 +354,11 @@ func TestScanObjects(t *testing.T) {
 			})
 
 			gotErr, _ := err.(*SyntaxError)
+
+			if tt.WantFound != found {
+				t.Errorf("want found %+v", tt.WantFound)
+				t.Errorf(" got found %+v", found)
+			}
 
 			// if we expect errors
 			if tt.WantErrError != "" && gotErr == nil {

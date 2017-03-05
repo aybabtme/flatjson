@@ -1,20 +1,27 @@
-# WIP
+# flatjson
+
+Fast and dirty parsing of JSON! Decode only the parts you care about!
 
 ## What is flat JSON?
 
-Flat JSON is a subset of JSON where the only supported types are objects containing
-strings, numbers, booleans or null values. There can't be nested objects or
-arrays. The root element must be an object.
+This library used to support only what I called a "flat" subset of JSON. But now it supports all JSON, but you can still decide how "flat" you want to go. The flatter, the faster :).
+
+> Flat JSON is a subset of JSON where the only supported types are objects containing
+> strings, numbers, booleans or null values. There can't be nested objects or
+> arrays. The root element must be an object.
 
 ## What's the use for that?
 
-If you log in JSON, likely your logs respect this principle. Using a JSON
-parser that supports only this subset should be faster than using a general
-purpose one. So this is one use case, parsing logs that are in JSON.
+It's fast and you decode only what you need. The old goal was:
+
+> If you log in JSON, likely your logs respect this principle. Using a JSON
+> parser that supports only this subset should be faster than using a general
+> purpose one. So this is one use case, parsing logs that are in JSON.
 
 ## Implementation
 
-This is a WIP implementation of a flatjson parser.
+This is an implementation of a flatjson parser. As far as I can tell, it works well enough. 
+Check out the tests to see if its good enough for you.
 
 ## Speed
 

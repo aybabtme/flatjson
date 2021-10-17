@@ -1,10 +1,10 @@
 package flatjson
 
-func scanPairName(data []byte, from int) (Pos, int, *SyntaxError) {
+func scanPairName(data []byte, from int) (Pos, int, error) {
 	// scan the name
 	pos, err := scanString(data, from)
 	if err != nil {
-		return pos, 0, syntaxErr(from, expectingNameBeforeValue, err)
+		return pos, 0, syntaxErr(from, expectingNameBeforeValue, err.(*SyntaxError))
 	}
 
 	// scan the separator
@@ -15,7 +15,7 @@ func scanPairName(data []byte, from int) (Pos, int, *SyntaxError) {
 	return pos, i, nil
 }
 
-func scanSeparator(data []byte, from int) (int, *SyntaxError) {
+func scanSeparator(data []byte, from int) (int, error) {
 	i := skipWhitespace(data, from)
 	if i >= len(data) {
 		return i, syntaxErr(i, endOfDataNoColon, nil)
@@ -40,7 +40,7 @@ func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err e
 	return scanArray(data, from, cb)
 }
 
-func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ *SyntaxError) {
+func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ error) {
 	pos.From, pos.To = -1, -1
 	start := skipWhitespace(data, from)
 	if len(data) == 0 || data[start] != '[' {
@@ -64,7 +64,7 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ *Sy
 		if b == '"' { // strings
 			valPos, err := scanString(data, i)
 			if err != nil {
-				return pos, false, syntaxErr(i, beginStringValueButError, err)
+				return pos, false, syntaxErr(i, beginStringValueButError, err.(*SyntaxError))
 			}
 
 			if cb != nil && cb.OnString != nil {
@@ -75,7 +75,7 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ *Sy
 		} else if b == '{' { // objects
 			valPos, found, err := scanObject(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err)
+				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
@@ -84,7 +84,7 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ *Sy
 		} else if b == '[' { // arrays
 			valPos, found, err := scanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err)
+				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
@@ -93,7 +93,7 @@ func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ *Sy
 		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
 			val, j, err := ScanNumber(data, i)
 			if err != nil {
-				return pos, false, syntaxErr(i, beginNumberValueButError, err)
+				return pos, false, syntaxErr(i, beginNumberValueButError, err.(*SyntaxError))
 			}
 			j = skipWhitespace(data, j)
 			if j < len(data) && data[j] != ',' && data[j] != ']' {

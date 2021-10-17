@@ -99,12 +99,13 @@ func TestScanStrings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 
-			gotVal, gotErr := scanString([]byte(tt.Data), tt.Start)
+			gotVal, err := scanString([]byte(tt.Data), tt.Start)
 
 			// if we expect errors
-			if tt.WantErrError != "" && gotErr == nil {
+			if tt.WantErrError != "" && err == nil {
 				t.Errorf("want an error, got none")
-			} else if tt.WantErrError != "" && gotErr != nil {
+			} else if tt.WantErrError != "" && err != nil {
+				gotErr := err.(*SyntaxError)
 				wantOffset := tt.WantErrOffset
 				if wantOffset != gotErr.Offset {
 					t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
@@ -113,7 +114,8 @@ func TestScanStrings(t *testing.T) {
 					t.Errorf("want error: %q", want)
 					t.Errorf(" got error: %q", got)
 				}
-			} else if gotErr != nil {
+			} else if err != nil {
+				gotErr := err.(*SyntaxError)
 				t.Errorf("offset=%d", gotErr.Offset)
 				t.Error(gotErr)
 			}
@@ -214,8 +216,9 @@ func TestScanNumbersErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			_, _, gotErr := ScanNumber([]byte(tt.Data), tt.Start)
+			_, _, err := ScanNumber([]byte(tt.Data), tt.Start)
 
+			gotErr := err.(*SyntaxError)
 			if tt.WantErrError != "" && gotErr == nil {
 				t.Fatalf("want an error, got none")
 			}
@@ -558,7 +561,7 @@ func TestScanNumbersNoError(t *testing.T) {
 		{
 			Name:    "negative exponent with variation, real numbers, around -9000",
 			Data:    "-9000.14159E-42",
-			WantVal: -9000.14159E-42,
+			WantVal: -9000.14159e-42,
 			WantEnd: 15,
 		},
 
@@ -662,7 +665,7 @@ func TestScanNumbersNoError(t *testing.T) {
 		{
 			Name:    "garbage and negative exponent with variation, real numbers, around -9000",
 			Data:    "-9000.14159E-42 yguhbhg2  23h23 2j3h ",
-			WantVal: -9000.14159E-42,
+			WantVal: -9000.14159e-42,
 			WantEnd: 15,
 		},
 	}
@@ -785,8 +788,9 @@ func TestScanDigits(t *testing.T) {
 			t.Errorf("want an error, got none")
 		} else if tt.WantErrError != "" && gotErr != nil {
 			wantOffset := tt.Start
-			if wantOffset != gotErr.Offset {
-				t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
+			err := gotErr.(*SyntaxError)
+			if wantOffset != err.Offset {
+				t.Errorf("want err offset %d, was %d", wantOffset, err.Offset)
 			}
 			if want, got := tt.WantErrError, gotErr.Error(); want != got {
 				t.Errorf("want error: %q", want)

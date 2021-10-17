@@ -102,7 +102,7 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 	return scanObject(data, from, cb)
 }
 
-func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err *SyntaxError) {
+func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ error) {
 	if from < 0 {
 		panic(fmt.Sprintf("negative starting index %d", from))
 	} else if len(data) == 0 {
@@ -144,7 +144,7 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 		if b == '"' { // strings
 			valPos, err = scanString(data, i)
 			if err != nil {
-				return pos, false, syntaxErr(i, beginStringValueButError, err)
+				return pos, false, syntaxErr(i, beginStringValueButError, err.(*SyntaxError))
 			}
 
 			if cb != nil && cb.OnString != nil {
@@ -153,28 +153,29 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 			i = valPos.To
 
 		} else if b == '{' { // objects
-			var found bool
+			// careful not to shadow `valPos`, we need it to be updated
 			valPos, found, err = scanObject(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err)
+				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '[' { // arrays
+			// careful not to shadow `valPos`, we need it to be updated
 			valPos, found, err = scanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err)
+				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
-			val, j, err := ScanNumber(data, i)
+			val, j, err := scanNumber(data, i)
 			if err != nil {
-				return pos, false, syntaxErr(i, beginNumberValueButError, err)
+				return pos, false, syntaxErr(i, beginNumberValueButError, err.(*SyntaxError))
 			}
 			valPos = Pos{From: i, To: j}
 			j = skipWhitespace(data, j)
@@ -251,7 +252,7 @@ const (
 // scanString reads a JSON string *position* in data. the `To` position
 // is one-past where it last found a string component.
 // It does not deal with whitespace.
-func scanString(data []byte, i int) (Pos, *SyntaxError) {
+func scanString(data []byte, i int) (Pos, error) {
 	from := i
 	to := i + 1
 	for ; to < len(data); to++ {
@@ -303,10 +304,10 @@ const (
 
 // ScanNumber reads a JSON number value from data and advances i one past
 // the last number component it found. It does not deal with whitespace.
-func ScanNumber(data []byte, i int) (float64, int, *SyntaxError) {
+func ScanNumber(data []byte, i int) (float64, int, error) {
 	return scanNumber(data, i)
 }
-func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
+func scanNumber(data []byte, i int) (float64, int, error) {
 
 	if i >= len(data) {
 		return 0, i, syntaxErr(i, reachedEndScanningNumber, nil)
@@ -323,7 +324,7 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 	}
 
 	var v float64
-	var err *SyntaxError
+	var err error
 
 	// scan an integer
 	b := data[i]
@@ -345,7 +346,7 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 		var frac float64
 		frac, i, err = scanDigits(data, i)
 		if err != nil {
-			return sign * v, i, syntaxErr(i, scanningForFraction, err)
+			return sign * v, i, syntaxErr(i, scanningForFraction, err.(*SyntaxError))
 		}
 		// scale down the digits of the fraction
 		powBase10 := math.Ceil(math.Log10(frac))
@@ -379,7 +380,7 @@ func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 		var exp float64
 		exp, i, err = scanDigits(data, i)
 		if err != nil {
-			return sign * v, i, syntaxErr(i, scanningForExponent, err)
+			return sign * v, i, syntaxErr(i, scanningForExponent, err.(*SyntaxError))
 		}
 		// scale up or down the value
 		if isNegExp {
@@ -400,7 +401,7 @@ const (
 // scanDigits reads an integer value from data and advances i one-past
 // the last digit component of data.
 // it does not deal with whitespace
-func scanDigits(data []byte, i int) (float64, int, *SyntaxError) {
+func scanDigits(data []byte, i int) (float64, int, error) {
 	// digits := (digit | digit digits)
 
 	if i >= len(data) {

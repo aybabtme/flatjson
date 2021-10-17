@@ -25,76 +25,76 @@ func TestScanObjects(t *testing.T) {
 	}{
 
 		// happy path
-		{
-			Name: "empty string",
-			Data: ``,
-		},
-		{
-			Name:      "empty object",
-			Data:      `{}`,
-			WantPos:   Pos{0, 2},
-			WantFound: true,
-		},
-		{
-			Name:    "simple string object",
-			Data:    `{"hello":"world"}`,
-			WantPos: Pos{0, 17},
-			WantString: []tstring{
-				{name: `"hello"`, value: `"world"`},
-			},
-			WantRaw: []traw{
-				{name: `"hello"`, raw: `"world"`},
-			},
-			WantFound: true,
-		},
-		{
-			Name:    "simple number object",
-			Data:    `{"hello":-49.14159e-2}`,
-			WantPos: Pos{0, 22},
-			WantNumber: []tnumber{
-				{name: `"hello"`, value: -49.14159e-2},
-			},
-			WantRaw: []traw{
-				{name: `"hello"`, raw: `-49.14159e-2`},
-			},
-			WantFound: true,
-		},
-		{
-			Name:    "simple true bool object",
-			Data:    `{"hello":true}`,
-			WantPos: Pos{0, 14},
-			WantBool: []tbool{
-				{name: `"hello"`, value: true},
-			},
-			WantRaw: []traw{
-				{name: `"hello"`, raw: `true`},
-			},
-			WantFound: true,
-		},
-		{
-			Name:    "simple false bool object",
-			Data:    `{"hello":false}`,
-			WantPos: Pos{0, 15},
-			WantBool: []tbool{
-				{name: `"hello"`, value: false},
-			},
-			WantRaw: []traw{
-				{name: `"hello"`, raw: `false`},
-			},
-			WantFound: true,
-		},
-		{
-			Name:    "simple null object",
-			Data:    `{"hello":null}`,
-			WantPos: Pos{0, 14},
-			WantNull: []tnull{
-				{name: `"hello"`},
-			},
-			WantRaw: []traw{
-				{name: `"hello"`, raw: `null`},
-			},
-			WantFound: true,
-		},
+		// {
+		// 	Name: "empty string",
+		// 	Data: ``,
+		// },
+		// {
+		// 	Name:      "empty object",
+		// 	Data:      `{}`,
+		// 	WantPos:   Pos{0, 2},
+		// 	WantFound: true,
+		// },
+		// {
+		// 	Name:    "simple string object",
+		// 	Data:    `{"hello":"world"}`,
+		// 	WantPos: Pos{0, 17},
+		// 	WantString: []tstring{
+		// 		{name: `"hello"`, value: `"world"`},
+		// 	},
+		// 	WantRaw: []traw{
+		// 		{name: `"hello"`, raw: `"world"`},
+		// 	},
+		// 	WantFound: true,
+		// },
+		// {
+		// 	Name:    "simple number object",
+		// 	Data:    `{"hello":-49.14159e-2}`,
+		// 	WantPos: Pos{0, 22},
+		// 	WantNumber: []tnumber{
+		// 		{name: `"hello"`, value: -49.14159e-2},
+		// 	},
+		// 	WantRaw: []traw{
+		// 		{name: `"hello"`, raw: `-49.14159e-2`},
+		// 	},
+		// 	WantFound: true,
+		// },
+		// {
+		// 	Name:    "simple true bool object",
+		// 	Data:    `{"hello":true}`,
+		// 	WantPos: Pos{0, 14},
+		// 	WantBool: []tbool{
+		// 		{name: `"hello"`, value: true},
+		// 	},
+		// 	WantRaw: []traw{
+		// 		{name: `"hello"`, raw: `true`},
+		// 	},
+		// 	WantFound: true,
+		// },
+		// {
+		// 	Name:    "simple false bool object",
+		// 	Data:    `{"hello":false}`,
+		// 	WantPos: Pos{0, 15},
+		// 	WantBool: []tbool{
+		// 		{name: `"hello"`, value: false},
+		// 	},
+		// 	WantRaw: []traw{
+		// 		{name: `"hello"`, raw: `false`},
+		// 	},
+		// 	WantFound: true,
+		// },
+		// {
+		// 	Name:    "simple null object",
+		// 	Data:    `{"hello":null}`,
+		// 	WantPos: Pos{0, 14},
+		// 	WantNull: []tnull{
+		// 		{name: `"hello"`},
+		// 	},
+		// 	WantRaw: []traw{
+		// 		{name: `"hello"`, raw: `null`},
+		// 	},
+		// 	WantFound: true,
+		// },
 
 		{
 			Name:    "simple composite object",
@@ -400,10 +400,11 @@ func TestScanObjects(t *testing.T) {
 			}
 			var gotRaw []traw
 			onRaw := func(key, value Pos) {
-				gotRaw = append(gotRaw, traw{
+				v := traw{
 					name: key.String(data),
 					raw:  value.String(data),
-				})
+				}
+				gotRaw = append(gotRaw, v)
 			}
 
 			pos, found, err := ScanObject([]byte(data), 0, &Callbacks{
@@ -414,17 +415,16 @@ func TestScanObjects(t *testing.T) {
 				OnRaw:     onRaw,
 			})
 
-			gotErr, _ := err.(*SyntaxError)
-
 			if tt.WantFound != found {
 				t.Errorf("want found %+v", tt.WantFound)
 				t.Errorf(" got found %+v", found)
 			}
 
 			// if we expect errors
-			if tt.WantErrError != "" && gotErr == nil {
+			if tt.WantErrError != "" && err == nil {
 				t.Errorf("want an error, got none")
-			} else if tt.WantErrError != "" && gotErr != nil {
+			} else if tt.WantErrError != "" && err != nil {
+				gotErr, _ := err.(*SyntaxError)
 				wantOffset := tt.WantErrOffset
 				if wantOffset != gotErr.Offset {
 					t.Errorf("want err offset %d, was %d", wantOffset, gotErr.Offset)
@@ -433,7 +433,8 @@ func TestScanObjects(t *testing.T) {
 					t.Errorf("want error: %q", want)
 					t.Errorf(" got error: %q", got)
 				}
-			} else if gotErr != nil {
+			} else if err != nil {
+				gotErr, _ := err.(*SyntaxError)
 				t.Errorf("offset=%d", gotErr.Offset)
 				t.Error(gotErr)
 			} else {

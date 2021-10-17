@@ -72,6 +72,8 @@ type Callbacks struct {
 	// TODO: not supported yet
 	onObject objectDec
 	onArray  arrayDec
+
+	OnRaw func(name, value Pos)
 }
 
 const (
@@ -97,6 +99,10 @@ const (
 // ScanObject according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
 func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err error) {
+	return scanObject(data, from, cb)
+}
+
+func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err *SyntaxError) {
 	if from < 0 {
 		panic(fmt.Sprintf("negative starting index %d", from))
 	} else if len(data) == 0 {
@@ -134,8 +140,9 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 		// decide if the value is a number, string, object, array, bool or null
 		b := data[i]
 
+		var valPos Pos
 		if b == '"' { // strings
-			valPos, err := scanString(data, i)
+			valPos, err = scanString(data, i)
 			if err != nil {
 				return pos, false, syntaxErr(i, beginStringValueButError, err)
 			}
@@ -146,18 +153,19 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 			i = valPos.To
 
 		} else if b == '{' { // objects
-			valPos, found, err := ScanObject(data, i, nil) // TODO: fix recursion
+			var found bool
+			valPos, found, err = scanObject(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err)
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '[' { // arrays
-			valPos, found, err := ScanArray(data, i, nil) // TODO: fix recursion
+			valPos, found, err = scanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err)
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
@@ -168,6 +176,7 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 			if err != nil {
 				return pos, false, syntaxErr(i, beginNumberValueButError, err)
 			}
+			valPos = Pos{From: i, To: j}
 			j = skipWhitespace(data, j)
 			if j < len(data) && data[j] != ',' && data[j] != '}' {
 				return pos, false, syntaxErr(i, malformedNumber, nil)
@@ -182,11 +191,12 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 			data[i+1] == 'r' &&
 			data[i+2] == 'u' &&
 			data[i+3] == 'e' {
-
+			j = i + 4
+			valPos = Pos{From: i, To: j}
 			if cb != nil && cb.OnBoolean != nil {
 				cb.OnBoolean(Bool{Name: pos, Value: true})
 			}
-			i += 4
+			i = j
 
 		} else if i+4 < len(data) && // bool - false case
 			b == 'f' &&
@@ -194,25 +204,30 @@ func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err 
 			data[i+2] == 'l' &&
 			data[i+3] == 's' &&
 			data[i+4] == 'e' {
-
+			j = i + 5
+			valPos = Pos{From: i, To: j}
 			if cb != nil && cb.OnBoolean != nil {
 				cb.OnBoolean(Bool{Name: pos, Value: false})
 			}
-			i += 5
+			i = j
 
 		} else if i+3 < len(data) && // null
 			b == 'n' &&
 			data[i+1] == 'u' &&
 			data[i+2] == 'l' &&
 			data[i+3] == 'l' {
-
+			j = i + 4
 			if cb != nil && cb.OnNull != nil {
 				cb.OnNull(Null{Name: pos})
 			}
-			i += 4
+			valPos = Pos{From: i, To: j}
+			i = j
 
 		} else {
 			return pos, false, syntaxErr(i, expectValueButNoKnownType, nil)
+		}
+		if cb != nil && cb.OnRaw != nil {
+			cb.OnRaw(pos, valPos)
 		}
 
 		i = skipWhitespace(data, i)
@@ -289,6 +304,9 @@ const (
 // ScanNumber reads a JSON number value from data and advances i one past
 // the last number component it found. It does not deal with whitespace.
 func ScanNumber(data []byte, i int) (float64, int, *SyntaxError) {
+	return scanNumber(data, i)
+}
+func scanNumber(data []byte, i int) (float64, int, *SyntaxError) {
 
 	if i >= len(data) {
 		return 0, i, syntaxErr(i, reachedEndScanningNumber, nil)

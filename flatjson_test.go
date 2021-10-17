@@ -18,6 +18,7 @@ func TestScanObjects(t *testing.T) {
 		WantString []tstring
 		WantBool   []tbool
 		WantNull   []tnull
+		WantRaw    []traw
 
 		WantErrError  string
 		WantErrOffset int
@@ -41,6 +42,9 @@ func TestScanObjects(t *testing.T) {
 			WantString: []tstring{
 				{name: `"hello"`, value: `"world"`},
 			},
+			WantRaw: []traw{
+				{name: `"hello"`, raw: `"world"`},
+			},
 			WantFound: true,
 		},
 		{
@@ -49,6 +53,9 @@ func TestScanObjects(t *testing.T) {
 			WantPos: Pos{0, 22},
 			WantNumber: []tnumber{
 				{name: `"hello"`, value: -49.14159e-2},
+			},
+			WantRaw: []traw{
+				{name: `"hello"`, raw: `-49.14159e-2`},
 			},
 			WantFound: true,
 		},
@@ -59,6 +66,9 @@ func TestScanObjects(t *testing.T) {
 			WantBool: []tbool{
 				{name: `"hello"`, value: true},
 			},
+			WantRaw: []traw{
+				{name: `"hello"`, raw: `true`},
+			},
 			WantFound: true,
 		},
 		{
@@ -68,6 +78,9 @@ func TestScanObjects(t *testing.T) {
 			WantBool: []tbool{
 				{name: `"hello"`, value: false},
 			},
+			WantRaw: []traw{
+				{name: `"hello"`, raw: `false`},
+			},
 			WantFound: true,
 		},
 		{
@@ -76,6 +89,9 @@ func TestScanObjects(t *testing.T) {
 			WantPos: Pos{0, 14},
 			WantNull: []tnull{
 				{name: `"hello"`},
+			},
+			WantRaw: []traw{
+				{name: `"hello"`, raw: `null`},
 			},
 			WantFound: true,
 		},
@@ -96,6 +112,25 @@ func TestScanObjects(t *testing.T) {
 			},
 			WantNull: []tnull{
 				{name: `"e"`},
+			},
+			WantRaw: []traw{
+				{name: `"a"`, raw: `"1"`},
+				{name: `"b"`, raw: `2`},
+				{name: `"c"`, raw: `true`},
+				{name: `"d"`, raw: `false`},
+				{name: `"e"`, raw: `null`},
+				{name: `"f"`, raw: `{}`},
+				{name: `"g"`, raw: `[]`},
+			},
+			WantFound: true,
+		},
+
+		{
+			Name:    "nested composite object",
+			Data:    `{ "a":[{"b":true},{"c":{}}] }`,
+			WantPos: Pos{0, 29},
+			WantRaw: []traw{
+				{name: `"a"`, raw: `[{"b":true},{"c":{}}]`},
 			},
 			WantFound: true,
 		},
@@ -126,6 +161,15 @@ func TestScanObjects(t *testing.T) {
 			WantNull: []tnull{
 				{name: `"e"`},
 			},
+			WantRaw: []traw{
+				{name: `"a"`, raw: `"1"`},
+				{name: `"b"`, raw: `2`},
+				{name: `"c"`, raw: `true`},
+				{name: `"d"`, raw: `false`},
+				{name: `"e"`, raw: `null`},
+				{name: `"f"`, raw: `{}`},
+				{name: `"g"`, raw: `[]`},
+			},
 			WantFound: true,
 		},
 
@@ -155,6 +199,15 @@ func TestScanObjects(t *testing.T) {
 			},
 			WantNull: []tnull{
 				{name: `"e"`},
+			},
+			WantRaw: []traw{
+				{name: `"a"`, raw: `"1"`},
+				{name: `"b"`, raw: `2`},
+				{name: `"c"`, raw: `true`},
+				{name: `"d"`, raw: `false`},
+				{name: `"e"`, raw: `null`},
+				{name: `"f"`, raw: `{}`},
+				{name: `"g"`, raw: `[    ]`},
 			},
 			WantFound: true,
 		},
@@ -345,12 +398,20 @@ func TestScanObjects(t *testing.T) {
 					name: v.Name.String(data),
 				})
 			}
+			var gotRaw []traw
+			onRaw := func(key, value Pos) {
+				gotRaw = append(gotRaw, traw{
+					name: key.String(data),
+					raw:  value.String(data),
+				})
+			}
 
 			pos, found, err := ScanObject([]byte(data), 0, &Callbacks{
 				OnNumber:  onNumber,
 				OnString:  onString,
 				OnBoolean: onBool,
 				OnNull:    onNull,
+				OnRaw:     onRaw,
 			})
 
 			gotErr, _ := err.(*SyntaxError)
@@ -401,6 +462,11 @@ func TestScanObjects(t *testing.T) {
 					t.Errorf("want null %+v", want)
 					t.Errorf(" got null %+v", got)
 				}
+
+				if want, got := tt.WantRaw, gotRaw; !reflect.DeepEqual(want, got) {
+					t.Errorf("want raw %+v", want)
+					t.Errorf(" got raw %+v", got)
+				}
 			}
 		})
 	}
@@ -423,4 +489,9 @@ type tbool struct {
 
 type tnull struct {
 	name string
+}
+
+type traw struct {
+	name string
+	raw  string
 }

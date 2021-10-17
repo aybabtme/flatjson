@@ -37,6 +37,10 @@ func scanSeparator(data []byte, from int) (int, *SyntaxError) {
 // ScanArray according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
 func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err error) {
+	return scanArray(data, from, cb)
+}
+
+func scanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ *SyntaxError) {
 	pos.From, pos.To = -1, -1
 	start := skipWhitespace(data, from)
 	if len(data) == 0 || data[start] != '[' {
@@ -69,18 +73,18 @@ func ScanArray(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err e
 			i = valPos.To
 
 		} else if b == '{' { // objects
-			valPos, found, err := ScanObject(data, i, nil) // TODO: fix recursion
+			valPos, found, err := scanObject(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err)
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}
 			i = valPos.To
 
 		} else if b == '[' { // arrays
-			valPos, found, err := ScanArray(data, i, nil) // TODO: fix recursion
+			valPos, found, err := scanArray(data, i, nil) // TODO: fix recursion
 			if err != nil {
-				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
+				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err)
 			} else if !found {
 				return Pos{}, found, syntaxErr(i, expectValueButNoKnownType, nil)
 			}

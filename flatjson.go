@@ -7,6 +7,54 @@ import (
 	"strings"
 )
 
+type EntityType uint8
+
+const (
+	EntityType_Invalid = iota
+	EntityType_String
+	EntityType_Object
+	EntityType_Array
+	EntityType_Number
+	EntityType_Boolean_True
+	EntityType_Boolean_False
+	EntityType_Null
+)
+
+func GuessNextEntityType(data []byte, i int) EntityType {
+	// decide if the value is a number, string, object, array, bool or null
+	b := data[i]
+	if b == '"' { // strings
+		return EntityType_String
+	} else if b == '{' { // objects
+		return EntityType_Object
+	} else if b == '[' { // arrays
+		return EntityType_Array
+	} else if b == '-' || (b >= '0' && b <= '9') { // numbers
+		return EntityType_Number
+	} else if i+3 < len(data) && // bool - true case
+		b == 't' &&
+		data[i+1] == 'r' &&
+		data[i+2] == 'u' &&
+		data[i+3] == 'e' {
+		return EntityType_Boolean_True
+	} else if i+4 < len(data) && // bool - false case
+		b == 'f' &&
+		data[i+1] == 'a' &&
+		data[i+2] == 'l' &&
+		data[i+3] == 's' &&
+		data[i+4] == 'e' {
+		return EntityType_Boolean_False
+
+	} else if i+3 < len(data) && // null
+		b == 'n' &&
+		data[i+1] == 'u' &&
+		data[i+2] == 'l' &&
+		data[i+3] == 'l' {
+		return EntityType_Null
+	}
+	return EntityType_Invalid
+}
+
 type SyntaxError struct {
 	Offset  int
 	Message string
@@ -196,10 +244,10 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 		i = j
 
 		// decide if the value is a number, string, object, array, bool or null
-		b := data[i]
+		et := GuessNextEntityType(data, i)
 
 		var valPos Pos
-		if b == '"' { // strings
+		if et == EntityType_String { // strings
 			valPos, err = scanString(data, i)
 			if err != nil {
 				return pos, false, syntaxErr(i, beginStringValueButError, err.(*SyntaxError))
@@ -210,7 +258,7 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			}
 			i = valPos.To
 
-		} else if b == '{' { // objects
+		} else if et == EntityType_Object { // objects
 			// careful not to shadow `valPos`, we need it to be updated
 			valPos, found, err = scanObject(data, i, append(prefixes, pfx), cb) // TODO: fix recursion
 			if err != nil {
@@ -220,7 +268,7 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			}
 			i = valPos.To
 
-		} else if b == '[' { // arrays
+		} else if et == EntityType_Array { // arrays
 			// careful not to shadow `valPos`, we need it to be updated
 			valPos, found, err = scanArray(data, i, append(prefixes, pfx), cb) // TODO: fix recursion
 			if err != nil {
@@ -230,7 +278,7 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			}
 			i = valPos.To
 
-		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
+		} else if et == EntityType_Number { // numbers
 			val, j, err := scanNumber(data, i)
 			if err != nil {
 				return pos, false, syntaxErr(i, beginNumberValueButError, err.(*SyntaxError))
@@ -245,11 +293,7 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			}
 			i = j
 
-		} else if i+3 < len(data) && // bool - true case
-			b == 't' &&
-			data[i+1] == 'r' &&
-			data[i+2] == 'u' &&
-			data[i+3] == 'e' {
+		} else if et == EntityType_Boolean_True {
 			j = i + 4
 			valPos = Pos{From: i, To: j}
 			if cb != nil && cb.OnBoolean != nil && cb.MaxDepth >= len(prefixes) {
@@ -257,12 +301,7 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			}
 			i = j
 
-		} else if i+4 < len(data) && // bool - false case
-			b == 'f' &&
-			data[i+1] == 'a' &&
-			data[i+2] == 'l' &&
-			data[i+3] == 's' &&
-			data[i+4] == 'e' {
+		} else if et == EntityType_Boolean_False {
 			j = i + 5
 			valPos = Pos{From: i, To: j}
 			if cb != nil && cb.OnBoolean != nil && cb.MaxDepth >= len(prefixes) {
@@ -270,11 +309,7 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			}
 			i = j
 
-		} else if i+3 < len(data) && // null
-			b == 'n' &&
-			data[i+1] == 'u' &&
-			data[i+2] == 'l' &&
-			data[i+3] == 'l' {
+		} else if et == EntityType_Null {
 			j = i + 4
 			if cb != nil && cb.OnNull != nil && cb.MaxDepth >= len(prefixes) {
 				cb.OnNull(prefixes, Null{Name: pfx})

@@ -61,13 +61,13 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 		}
 
 		// decide if the value is a number, string, object, array, bool or null
-		b := data[i]
+		et := GuessNextEntityType(data, i)
 
 		var (
 			valPos Pos
 			err    error
 		)
-		if b == '"' { // strings
+		if et == EntityType_String { // strings
 			valPos, err = scanString(data, i)
 			if err != nil {
 				return pos, false, syntaxErr(i, beginStringValueButError, err.(*SyntaxError))
@@ -78,7 +78,7 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			}
 			i = valPos.To
 
-		} else if b == '{' { // objects
+		} else if et == EntityType_Object { // objects
 			valPos, found, err = scanObject(data, i, append(prefixes, newArrayIndexPrefix(index)), cb) // TODO: fix recursion
 			if err != nil {
 				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
@@ -87,7 +87,7 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			}
 			i = valPos.To
 
-		} else if b == '[' { // arrays
+		} else if et == EntityType_Array { // arrays
 			valPos, found, err = scanArray(data, i, append(prefixes, newArrayIndexPrefix(index)), cb) // TODO: fix recursion
 			if err != nil {
 				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
@@ -96,7 +96,7 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			}
 			i = valPos.To
 
-		} else if b == '-' || (b >= '0' && b <= '9') { // numbers
+		} else if et == EntityType_Number { // numbers
 			val, j, err := ScanNumber(data, i)
 			if err != nil {
 				return pos, false, syntaxErr(i, beginNumberValueButError, err.(*SyntaxError))
@@ -111,11 +111,7 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			valPos = Pos{From: i, To: j}
 			i = j
 
-		} else if i+3 < len(data) && // bool - true case
-			b == 't' &&
-			data[i+1] == 'r' &&
-			data[i+2] == 'u' &&
-			data[i+3] == 'e' {
+		} else if et == EntityType_Boolean_True {
 
 			if cb != nil && cb.OnBoolean != nil && cb.MaxDepth >= len(prefixes) {
 				cb.OnBoolean(prefixes, Bool{Name: newArrayIndexPrefix(index), Value: true})
@@ -123,12 +119,7 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			valPos = Pos{From: i, To: i + 4}
 			i += 4
 
-		} else if i+4 < len(data) && // bool - false case
-			b == 'f' &&
-			data[i+1] == 'a' &&
-			data[i+2] == 'l' &&
-			data[i+3] == 's' &&
-			data[i+4] == 'e' {
+		} else if et == EntityType_Boolean_False {
 
 			if cb != nil && cb.OnBoolean != nil && cb.MaxDepth >= len(prefixes) {
 				cb.OnBoolean(prefixes, Bool{Name: newArrayIndexPrefix(index), Value: false})
@@ -136,11 +127,7 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			valPos = Pos{From: i, To: i + 5}
 			i += 5
 
-		} else if i+3 < len(data) && // null
-			b == 'n' &&
-			data[i+1] == 'u' &&
-			data[i+2] == 'l' &&
-			data[i+3] == 'l' {
+		} else if et == EntityType_Null {
 
 			if cb != nil && cb.OnNull != nil && cb.MaxDepth >= len(prefixes) {
 				cb.OnNull(prefixes, Null{Name: newArrayIndexPrefix(index)})

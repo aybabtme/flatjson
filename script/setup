@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+
+function download_benchmark_dump_file() {
+    curl https://raw.githubusercontent.com/prust/wikipedia-movie-data/master/movies.json | jq -r -c '.[]' > ${root}/dump.json
+}
+
+function main() {
+    download_benchmark_dump_file
+}
+
+main

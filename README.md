@@ -4,7 +4,7 @@ Fast and dirty parsing of JSON! Decode only the parts you care about!
 
 ## Why
 
-This parser is very fast and allows you to only parse the things you care about. It also allows you to "visit" all the keys of a JSON entity recursively, in a single pass.
+This parser is very fast (or I mean it's not slow?) and allows you to only parse the things you care about. It also allows you to "visit" all the keys of a JSON entity recursively, in a single pass.
 
 ```go
 data := []byte(`{

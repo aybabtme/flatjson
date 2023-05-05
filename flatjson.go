@@ -3,6 +3,8 @@ package flatjson
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
 
 type SyntaxError struct {
@@ -35,35 +37,91 @@ type Pos struct {
 func (p Pos) Bytes(data []byte) []byte  { return data[p.From:p.To] }
 func (p Pos) String(data []byte) string { return string(p.Bytes(data)) }
 
+type Prefixes []Prefix
+
+func (pfxs Prefixes) AsString(data []byte) string {
+	if len(pfxs) == 0 {
+		return ""
+	}
+	bd := strings.Builder{}
+	for i, pfx := range pfxs {
+		if i != 0 {
+			bd.WriteRune('.')
+		}
+		if pfx.IsArrayIndex() {
+			bd.WriteString(strconv.Itoa(pfx.Index()))
+		} else {
+			s, err := strconv.Unquote(pfx.String(data))
+			if err != nil {
+				panic(fmt.Sprintf("prefix %q: %v", pfx.String(data), err))
+			}
+			bd.WriteString(s)
+		}
+	}
+	return bd.String()
+}
+
+type Prefix struct {
+	from int
+	to   int
+}
+
+func newObjectKeyPrefix(from, to int) Prefix {
+	return Prefix{from: from, to: to}
+}
+
+func newArrayIndexPrefix(index int) Prefix {
+	return Prefix{from: index, to: 0}
+}
+
+func (pfx Prefix) IsObjectKey() bool {
+	return pfx.to != 0
+}
+
+func (pfx Prefix) IsArrayIndex() bool {
+	return pfx.to == 0
+}
+
+func (pfx Prefix) Bytes(data []byte) []byte {
+	if pfx.IsArrayIndex() {
+		return []byte(strconv.Itoa(pfx.from))
+	}
+	return data[pfx.from:pfx.to]
+}
+func (pfx Prefix) String(data []byte) string { return string(pfx.Bytes(data)) }
+func (pfx Prefix) Index() int                { return pfx.from }
+
 type Number struct {
-	Name  Pos
+	Name  Prefix
 	Value float64
 }
 
 type String struct {
-	Name  Pos
+	Name  Prefix
 	Value Pos
 }
 
 type Bool struct {
-	Name  Pos
+	Name  Prefix
 	Value bool
 }
 
-type Null struct{ Name Pos }
+type Null struct{ Name Prefix }
 
 type (
-	NumberDec  func(Number)
-	StringDec  func(String)
-	BooleanDec func(Bool)
-	NullDec    func(Null)
+	NumberDec  func(prefixes Prefixes, val Number)
+	StringDec  func(prefixes Prefixes, val String)
+	BooleanDec func(prefixes Prefixes, val Bool)
+	NullDec    func(prefixes Prefixes, val Null)
 
 	// TODO: not supported yet
-	objectDec func(name Pos, cb *Callbacks)
-	arrayDec  func(*Callbacks)
+	objectDec func(prefixes Prefixes, name Prefix, cb *Callbacks)
+	arrayDec  func(prefixes Prefixes, cb *Callbacks)
 )
 
 type Callbacks struct {
+	MaxDepth int
+
 	OnNumber  NumberDec
 	OnString  StringDec
 	OnBoolean BooleanDec
@@ -73,7 +131,7 @@ type Callbacks struct {
 	onObject objectDec
 	onArray  arrayDec
 
-	OnRaw func(name, value Pos)
+	OnRaw func(prefixes Prefixes, name Prefix, value Pos)
 }
 
 const (
@@ -99,10 +157,10 @@ const (
 // ScanObject according to the spec at http://www.json.org/
 // but ignoring nested objects and arrays
 func ScanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, err error) {
-	return scanObject(data, from, cb)
+	return scanObject(data, from, nil, cb)
 }
 
-func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ error) {
+func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos, found bool, _ error) {
 	if from < 0 {
 		panic(fmt.Sprintf("negative starting index %d", from))
 	} else if len(data) == 0 {
@@ -131,9 +189,9 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 		}
 
 		// scan the name
-		pos, j, err := scanPairName(data, i)
+		pfx, j, err := scanPairName(data, i)
 		if err != nil {
-			return pos, false, err
+			return Pos{From: pfx.from, To: pfx.to}, false, err
 		}
 		i = j
 
@@ -147,14 +205,14 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 				return pos, false, syntaxErr(i, beginStringValueButError, err.(*SyntaxError))
 			}
 
-			if cb != nil && cb.OnString != nil {
-				cb.OnString(String{Name: pos, Value: valPos})
+			if cb != nil && cb.OnString != nil && cb.MaxDepth >= len(prefixes) {
+				cb.OnString(prefixes, String{Name: pfx, Value: valPos})
 			}
 			i = valPos.To
 
 		} else if b == '{' { // objects
 			// careful not to shadow `valPos`, we need it to be updated
-			valPos, found, err = scanObject(data, i, nil) // TODO: fix recursion
+			valPos, found, err = scanObject(data, i, append(prefixes, pfx), cb) // TODO: fix recursion
 			if err != nil {
 				return Pos{}, found, syntaxErr(i, beginObjectValueButError, err.(*SyntaxError))
 			} else if !found {
@@ -164,7 +222,7 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 
 		} else if b == '[' { // arrays
 			// careful not to shadow `valPos`, we need it to be updated
-			valPos, found, err = scanArray(data, i, nil) // TODO: fix recursion
+			valPos, found, err = scanArray(data, i, append(prefixes, pfx), cb) // TODO: fix recursion
 			if err != nil {
 				return Pos{}, found, syntaxErr(i, beginArrayValueButError, err.(*SyntaxError))
 			} else if !found {
@@ -182,8 +240,8 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 			if j < len(data) && data[j] != ',' && data[j] != '}' {
 				return pos, false, syntaxErr(i, malformedNumber, nil)
 			}
-			if cb != nil && cb.OnNumber != nil {
-				cb.OnNumber(Number{Name: pos, Value: val})
+			if cb != nil && cb.OnNumber != nil && cb.MaxDepth >= len(prefixes) {
+				cb.OnNumber(prefixes, Number{Name: pfx, Value: val})
 			}
 			i = j
 
@@ -194,8 +252,8 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 			data[i+3] == 'e' {
 			j = i + 4
 			valPos = Pos{From: i, To: j}
-			if cb != nil && cb.OnBoolean != nil {
-				cb.OnBoolean(Bool{Name: pos, Value: true})
+			if cb != nil && cb.OnBoolean != nil && cb.MaxDepth >= len(prefixes) {
+				cb.OnBoolean(prefixes, Bool{Name: pfx, Value: true})
 			}
 			i = j
 
@@ -207,8 +265,8 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 			data[i+4] == 'e' {
 			j = i + 5
 			valPos = Pos{From: i, To: j}
-			if cb != nil && cb.OnBoolean != nil {
-				cb.OnBoolean(Bool{Name: pos, Value: false})
+			if cb != nil && cb.OnBoolean != nil && cb.MaxDepth >= len(prefixes) {
+				cb.OnBoolean(prefixes, Bool{Name: pfx, Value: false})
 			}
 			i = j
 
@@ -218,8 +276,8 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 			data[i+2] == 'l' &&
 			data[i+3] == 'l' {
 			j = i + 4
-			if cb != nil && cb.OnNull != nil {
-				cb.OnNull(Null{Name: pos})
+			if cb != nil && cb.OnNull != nil && cb.MaxDepth >= len(prefixes) {
+				cb.OnNull(prefixes, Null{Name: pfx})
 			}
 			valPos = Pos{From: i, To: j}
 			i = j
@@ -227,8 +285,8 @@ func scanObject(data []byte, from int, cb *Callbacks) (pos Pos, found bool, _ er
 		} else {
 			return pos, false, syntaxErr(i, expectValueButNoKnownType, nil)
 		}
-		if cb != nil && cb.OnRaw != nil {
-			cb.OnRaw(pos, valPos)
+		if cb != nil && cb.OnRaw != nil && cb.MaxDepth >= len(prefixes) {
+			cb.OnRaw(prefixes, pfx, valPos)
 		}
 
 		i = skipWhitespace(data, i)

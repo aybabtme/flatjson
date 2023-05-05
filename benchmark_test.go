@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/buger/jsonparser"
+	"github.com/valyala/fastjson"
 )
 
 func BenchmarkFlatJSON(b *testing.B) {
@@ -13,7 +16,13 @@ func BenchmarkFlatJSON(b *testing.B) {
 	b.ResetTimer()
 	for i, line := range lines {
 		b.SetBytes(int64(len(line)))
-		_, found, err := ScanObject(line, 0, nil)
+		_, found, err := ScanObject(line, 0, &Callbacks{
+			OnRaw: func(prefixes Prefixes, name Prefix, value Pos) {
+				if !name.IsArrayIndex() && !name.IsObjectKey() {
+					panic("what")
+				}
+			},
+		})
 		if err != nil {
 			b.Errorf("line %d: %v", i, err)
 		}
@@ -33,6 +42,40 @@ func BenchmarkEncodingJSON(b *testing.B) {
 		err := json.Unmarshal(line, &q)
 		if err != nil {
 			b.Errorf("line %d: %v", i, err)
+		}
+	}
+}
+
+func Benchmark_buger_jsonparse(b *testing.B) {
+	lines := loadObjects(b, "dump.json")
+
+	b.ResetTimer()
+	for i, line := range lines {
+		b.SetBytes(int64(len(line)))
+		err := jsonparser.ObjectEach(line, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+			if len(key) == 0 {
+				panic("what")
+			}
+			return nil
+		})
+		if err != nil {
+			b.Errorf("line %d (%q): %v", i, string(line), err)
+		}
+	}
+}
+
+func Benchmark_valyala_fastjson(b *testing.B) {
+	lines := loadObjects(b, "dump.json")
+
+	b.ResetTimer()
+	for i, line := range lines {
+		b.SetBytes(int64(len(line)))
+		v, err := fastjson.ParseBytes(line)
+		if err != nil {
+			b.Errorf("line %d (%q): %v", i, string(line), err)
+		}
+		if v.Type() != fastjson.TypeObject {
+			b.Error("not an object")
 		}
 	}
 }

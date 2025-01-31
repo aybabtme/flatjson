@@ -373,9 +373,9 @@ func scanString(data []byte, i int) (Pos, error) {
 				}
 				for j, b := range data[to+1 : to+5] {
 					if b < '0' ||
-						(b > '9' && b < 'a') ||
-						(b > 'f' && b < 'A') ||
-						(b > 'F') {
+						(b > '9' && b < 'A') ||
+						(b > 'F' && b < 'a') ||
+						(b > 'f') {
 						return Pos{}, syntaxErr(to+j-2, unicodeNotFollowHex, nil)
 					}
 					to++

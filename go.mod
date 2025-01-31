@@ -1,4 +1,4 @@
-module github.com/aybabtme/flatjson
+module github.com/omnivore/flatjson
 
 go 1.17
 

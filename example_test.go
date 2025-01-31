@@ -3,7 +3,7 @@ package flatjson_test
 import (
 	"fmt"
 
-	"github.com/aybabtme/flatjson"
+	"github.com/omnivore/flatjson"
 )
 
 func ExampleScanObject() {

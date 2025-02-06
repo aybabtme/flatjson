@@ -296,6 +296,18 @@ func TestScanObjects(t *testing.T) {
 			WantPos:   Pos{5, 13},
 			WantFound: true,
 		},
+		{
+			Name:      "escaped unicode in string",
+			Data:      `{"hello":"world \u00E9"}`,
+			WantPos:   Pos{0, 24},
+			WantFound: true,
+			WantString: []tstring{
+				{name: `"hello"`, value: `"world \u00E9"`},
+			},
+			WantRaw: []traw{
+				{name: `"hello"`, raw: `"world \u00E9"`},
+			},
+		},
 
 		// errors
 		{
@@ -431,12 +443,17 @@ func TestScanObjects(t *testing.T) {
 			WantErrError:  expectValueButNoKnownType,
 			WantErrOffset: 10,
 		},
-
 		{
 			Name:          "no closing bracket at end of object",
 			Data:          `{"hello": "hello"   `,
 			WantErrError:  endOfDataNoClosingBracket,
 			WantErrOffset: 21,
+		},
+		{
+			Name:          "invalid unicode escape",
+			Data:          `{"hello": "world\uZZ99"}`,
+			WantErrError:  beginStringValueButError + ", " + unicodeNotFollowHex,
+			WantErrOffset: 10,
 		},
 	}
 

@@ -14,7 +14,7 @@ func ExampleScanObject() {
 
 	flatjson.ScanObject(data, 0, &flatjson.Callbacks{
 		MaxDepth: 99,
-		OnNumber: func(prefixes flatjson.Prefixes, val flatjson.Number) {
+		OnFloat: func(prefixes flatjson.Prefixes, val flatjson.Float) {
 			fmt.Printf("path=%s\n", prefixes.AsString(data))
 			if val.Name.IsObjectKey() {
 				fmt.Printf("key=%s\n", val.Name.String(data))

@@ -97,7 +97,7 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			i = valPos.To
 
 		} else if et == EntityType_Number { // numbers
-			val, j, err := ScanNumber(data, i)
+			f64, i64, isInt, j, err := ScanNumber(data, i)
 			if err != nil {
 				return pos, false, syntaxErr(i, beginNumberValueButError, err.(*SyntaxError))
 			}
@@ -105,8 +105,12 @@ func scanArray(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Pos
 			if j < len(data) && data[j] != ',' && data[j] != ']' {
 				return pos, false, syntaxErr(i, malformedNumber, nil)
 			}
-			if cb != nil && cb.OnNumber != nil && cb.MaxDepth >= len(prefixes) {
-				cb.OnNumber(prefixes, Number{Name: newArrayIndexPrefix(index), Value: val})
+			if cb != nil && cb.MaxDepth >= len(prefixes) {
+				if isInt && cb.OnInteger != nil {
+					cb.OnInteger(prefixes, Integer{Name: newArrayIndexPrefix(index), Value: i64})
+				} else if cb.OnFloat != nil {
+					cb.OnFloat(prefixes, Float{Name: newArrayIndexPrefix(index), Value: f64})
+				}
 			}
 			valPos = Pos{From: i, To: j}
 			i = j

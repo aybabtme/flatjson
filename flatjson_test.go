@@ -15,11 +15,12 @@ func TestScanObjects(t *testing.T) {
 		WantPos   Pos
 		WantFound bool
 
-		WantNumber []tnumber
-		WantString []tstring
-		WantBool   []tbool
-		WantNull   []tnull
-		WantRaw    []traw
+		WantFloat   []tfloat
+		WantInteger []tinteger
+		WantString  []tstring
+		WantBool    []tbool
+		WantNull    []tnull
+		WantRaw     []traw
 
 		WantErrError  string
 		WantErrOffset int
@@ -52,7 +53,7 @@ func TestScanObjects(t *testing.T) {
 		// 	Name:    "simple number object",
 		// 	Data:    `{"hello":-49.14159e-2}`,
 		// 	WantPos: Pos{0, 22},
-		// 	WantNumber: []tnumber{
+		// 	WantFloat: []tfloat{
 		// 		{name: `"hello"`, value: -49.14159e-2},
 		// 	},
 		// 	WantRaw: []traw{
@@ -99,13 +100,16 @@ func TestScanObjects(t *testing.T) {
 
 		{
 			Name:    "simple composite object",
-			Data:    `{"a":"1","b":2,"c":true,"d":false,"e":null,"f":{},"g":[]}`,
-			WantPos: Pos{0, 57},
+			Data:    `{"a":"1","b":2.0,"c":true,"d":false,"e":null,"f":{},"g":[],"h":9}`,
+			WantPos: Pos{0, 65},
 			WantString: []tstring{
 				{name: `"a"`, value: `"1"`},
 			},
-			WantNumber: []tnumber{
+			WantFloat: []tfloat{
 				{name: `"b"`, value: 2},
+			},
+			WantInteger: []tinteger{
+				{name: `"h"`, value: 9},
 			},
 			WantBool: []tbool{
 				{name: `"c"`, value: true},
@@ -116,12 +120,13 @@ func TestScanObjects(t *testing.T) {
 			},
 			WantRaw: []traw{
 				{name: `"a"`, raw: `"1"`},
-				{name: `"b"`, raw: `2`},
+				{name: `"b"`, raw: `2.0`},
 				{name: `"c"`, raw: `true`},
 				{name: `"d"`, raw: `false`},
 				{name: `"e"`, raw: `null`},
 				{name: `"f"`, raw: `{}`},
 				{name: `"g"`, raw: `[]`},
+				{name: `"h"`, raw: `9`},
 			},
 			WantFound: true,
 		},
@@ -171,7 +176,7 @@ func TestScanObjects(t *testing.T) {
 			Data: `{
 				"key":{
 					"key2": {
-						"deep": 2
+						"deep": 2.0
 					}
 				},
 				"key2":[
@@ -181,9 +186,11 @@ func TestScanObjects(t *testing.T) {
 					{"is":"antoine"}
 				]
 			}`,
-			WantPos: Pos{0, 139},
-			WantNumber: []tnumber{
-				{pfx: "key.key2", name: `"deep"`, value: 2},
+			WantPos: Pos{0, 141},
+			WantFloat: []tfloat{
+				{pfx: "key.key2", name: `"deep"`, value: 2.0},
+			},
+			WantInteger: []tinteger{
 				{pfx: "key2", name: `1`, value: 42},
 			},
 			WantString: []tstring{
@@ -194,9 +201,9 @@ func TestScanObjects(t *testing.T) {
 				{pfx: "key2", name: `2`, value: true},
 			},
 			WantRaw: []traw{
-				{pfx: "key.key2", name: `"deep"`, raw: "2"},
-				{pfx: "key", name: `"key2"`, raw: "{\n\t\t\t\t\t\t\"deep\": 2\n\t\t\t\t\t}"},
-				{pfx: "", name: `"key"`, raw: "{\n\t\t\t\t\t\"key2\": {\n\t\t\t\t\t\t\"deep\": 2\n\t\t\t\t\t}\n\t\t\t\t}"},
+				{pfx: "key.key2", name: `"deep"`, raw: "2.0"},
+				{pfx: "key", name: `"key2"`, raw: "{\n\t\t\t\t\t\t\"deep\": 2.0\n\t\t\t\t\t}"},
+				{pfx: "", name: `"key"`, raw: "{\n\t\t\t\t\t\"key2\": {\n\t\t\t\t\t\t\"deep\": 2.0\n\t\t\t\t\t}\n\t\t\t\t}"},
 				{pfx: "key2", name: "0", raw: `"myname"`},
 				{pfx: "key2", name: "1", raw: `42`},
 				{pfx: "key2", name: "2", raw: `true`},
@@ -217,13 +224,17 @@ func TestScanObjects(t *testing.T) {
                 "d" :   false,
                 "e":    null,
 				"f":    {},
-				"g":    []
+				"g":    [],
+				"h":    9.0
 }`,
-			WantPos: Pos{13, 194},
+			WantPos: Pos{13, 211},
 			WantString: []tstring{
 				{name: `"a"`, value: `"1"`},
 			},
-			WantNumber: []tnumber{
+			WantFloat: []tfloat{
+				{name: `"h"`, value: 9.0},
+			},
+			WantInteger: []tinteger{
 				{name: `"b"`, value: 2},
 			},
 			WantBool: []tbool{
@@ -241,6 +252,7 @@ func TestScanObjects(t *testing.T) {
 				{name: `"e"`, raw: `null`},
 				{name: `"f"`, raw: `{}`},
 				{name: `"g"`, raw: `[]`},
+				{name: `"h"`, raw: `9.0`},
 			},
 			WantFound: true,
 		},
@@ -250,20 +262,24 @@ func TestScanObjects(t *testing.T) {
 			Data: `
             {
                 "a" :   "1"
-                ,"b" :   2,
+                ,"b" :   2.0,
                 "c" :true ,
                 "d" :   false
                 ,
                 "e":    null,
 				"f":            {},
-				"g":  [    ]
+				"g":  [    ],
+				"h"		: 			9  ` + `
 }`,
-			WantPos: Pos{13, 219},
+			WantPos: Pos{13, 240},
 			WantString: []tstring{
 				{name: `"a"`, value: `"1"`},
 			},
-			WantNumber: []tnumber{
-				{name: `"b"`, value: 2},
+			WantFloat: []tfloat{
+				{name: `"b"`, value: 2.0},
+			},
+			WantInteger: []tinteger{
+				{name: `"h"`, value: 9},
 			},
 			WantBool: []tbool{
 				{name: `"c"`, value: true},
@@ -274,12 +290,13 @@ func TestScanObjects(t *testing.T) {
 			},
 			WantRaw: []traw{
 				{name: `"a"`, raw: `"1"`},
-				{name: `"b"`, raw: `2`},
+				{name: `"b"`, raw: `2.0`},
 				{name: `"c"`, raw: `true`},
 				{name: `"d"`, raw: `false`},
 				{name: `"e"`, raw: `null`},
 				{name: `"f"`, raw: `{}`},
 				{name: `"g"`, raw: `[    ]`},
+				{name: `"h"`, raw: `9`},
 			},
 			WantFound: true,
 		},
@@ -460,9 +477,17 @@ func TestScanObjects(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 			data := []byte(tt.Data)
-			var gotNumber []tnumber
-			onNumber := func(pfx Prefixes, v Number) {
-				gotNumber = append(gotNumber, tnumber{
+			var gotFloat []tfloat
+			onFloat := func(pfx Prefixes, v Float) {
+				gotFloat = append(gotFloat, tfloat{
+					pfx:   pfx.AsString(data),
+					name:  v.Name.String(data),
+					value: v.Value,
+				})
+			}
+			var gotInteger []tinteger
+			onInteger := func(pfx Prefixes, v Integer) {
+				gotInteger = append(gotInteger, tinteger{
 					pfx:   pfx.AsString(data),
 					name:  v.Name.String(data),
 					value: v.Value,
@@ -503,7 +528,8 @@ func TestScanObjects(t *testing.T) {
 
 			pos, found, err := ScanObject([]byte(data), 0, &Callbacks{
 				MaxDepth:  tt.MaxDepth,
-				OnNumber:  onNumber,
+				OnFloat:   onFloat,
+				OnInteger: onInteger,
 				OnString:  onString,
 				OnBoolean: onBool,
 				OnNull:    onNull,
@@ -539,9 +565,14 @@ func TestScanObjects(t *testing.T) {
 					t.Errorf(" got position %+v", got)
 				}
 
-				if want, got := tt.WantNumber, gotNumber; !reflect.DeepEqual(want, got) {
-					t.Errorf("want number %+v", want)
-					t.Errorf(" got number %+v", got)
+				if want, got := tt.WantFloat, gotFloat; !reflect.DeepEqual(want, got) {
+					t.Errorf("want float %+v", want)
+					t.Errorf(" got float %+v", got)
+				}
+
+				if want, got := tt.WantInteger, gotInteger; !reflect.DeepEqual(want, got) {
+					t.Errorf("want integer %+v", want)
+					t.Errorf(" got integer %+v", got)
 				}
 
 				if want, got := tt.WantString, gotString; !reflect.DeepEqual(want, got) {
@@ -568,10 +599,16 @@ func TestScanObjects(t *testing.T) {
 	}
 }
 
-type tnumber struct {
+type tfloat struct {
 	pfx   string
 	name  string
 	value float64
+}
+
+type tinteger struct {
+	pfx   string
+	name  string
+	value int64
 }
 
 type tstring struct {

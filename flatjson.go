@@ -139,9 +139,14 @@ func (pfx Prefix) Bytes(data []byte) []byte {
 func (pfx Prefix) String(data []byte) string { return string(pfx.Bytes(data)) }
 func (pfx Prefix) Index() int                { return pfx.from }
 
-type Number struct {
+type Float struct {
 	Name  Prefix
 	Value float64
+}
+
+type Integer struct {
+	Name  Prefix
+	Value int64
 }
 
 type String struct {
@@ -157,7 +162,8 @@ type Bool struct {
 type Null struct{ Name Prefix }
 
 type (
-	NumberDec  func(prefixes Prefixes, val Number)
+	FloatDec   func(prefixes Prefixes, val Float)
+	IntegerDec func(prefixes Prefixes, val Integer)
 	StringDec  func(prefixes Prefixes, val String)
 	BooleanDec func(prefixes Prefixes, val Bool)
 	NullDec    func(prefixes Prefixes, val Null)
@@ -170,7 +176,8 @@ type (
 type Callbacks struct {
 	MaxDepth int
 
-	OnNumber  NumberDec
+	OnFloat   FloatDec
+	OnInteger IntegerDec
 	OnString  StringDec
 	OnBoolean BooleanDec
 	OnNull    NullDec
@@ -279,7 +286,7 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			i = valPos.To
 
 		} else if et == EntityType_Number { // numbers
-			val, j, err := scanNumber(data, i)
+			f64, i64, isInt, j, err := scanNumber(data, i)
 			if err != nil {
 				return pos, false, syntaxErr(i, beginNumberValueButError, err.(*SyntaxError))
 			}
@@ -288,8 +295,12 @@ func scanObject(data []byte, from int, prefixes []Prefix, cb *Callbacks) (pos Po
 			if j < len(data) && data[j] != ',' && data[j] != '}' {
 				return pos, false, syntaxErr(i, malformedNumber, nil)
 			}
-			if cb != nil && cb.OnNumber != nil && cb.MaxDepth >= len(prefixes) {
-				cb.OnNumber(prefixes, Number{Name: pfx, Value: val})
+			if cb != nil && cb.MaxDepth >= len(prefixes) {
+				if isInt && cb.OnInteger != nil {
+					cb.OnInteger(prefixes, Integer{Name: pfx, Value: i64})
+				} else if cb.OnFloat != nil {
+					cb.OnFloat(prefixes, Float{Name: pfx, Value: f64})
+				}
 			}
 			i = j
 
@@ -397,26 +408,28 @@ const (
 
 // ScanNumber reads a JSON number value from data and advances i one past
 // the last number component it found. It does not deal with whitespace.
-func ScanNumber(data []byte, i int) (float64, int, error) {
+func ScanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ error) {
 	return scanNumber(data, i)
 }
-func scanNumber(data []byte, i int) (float64, int, error) {
+func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ error) {
 
 	if i >= len(data) {
-		return 0, i, syntaxErr(i, reachedEndScanningNumber, nil)
+		return 0, 0, false, i, syntaxErr(i, reachedEndScanningNumber, nil)
 	}
 
-	sign := 1.0
+	// sign := 1.0
+	isNeg := false
 	if data[i] == '-' {
-		sign = -sign
+		isNeg = true
+		// sign = -sign
 		i++
 	}
 
 	if i >= len(data) {
-		return 0, i, syntaxErr(i, reachedEndScanningNumber, nil)
+		return 0, 0, false, i, syntaxErr(i, reachedEndScanningNumber, nil)
 	}
 
-	var v float64
+	var i64 int64
 	var err error
 
 	// scan an integer
@@ -424,31 +437,46 @@ func scanNumber(data []byte, i int) (float64, int, error) {
 	if b == '0' {
 		i++
 	} else if b >= '1' && b <= '9' {
-		v, i, err = scanDigits(data, i)
+		i64, i, err = scanDigits(data, i)
 	} else {
 		err = syntaxErr(i, cantFindIntegerPart, nil)
 	}
 
 	if err != nil || i >= len(data) {
-		return sign * v, i, err
+		if isNeg {
+			i64 = -i64
+		}
+		return 0, i64, true, i, err
 	}
+	isInt = true
+
+	f64 := float64(i64)
 
 	// scan fraction
 	if data[i] == '.' {
+		isInt = false
+		i64 = 0
 		i++
-		var frac float64
+		var frac int64
 		frac, i, err = scanDigits(data, i)
 		if err != nil {
-			return sign * v, i, syntaxErr(i, scanningForFraction, err.(*SyntaxError))
+			return f64, i64, isInt, i, syntaxErr(i, scanningForFraction, err.(*SyntaxError))
 		}
-		// scale down the digits of the fraction
-		powBase10 := math.Ceil(math.Log10(frac))
-		magnitude := math.Pow(10.0, powBase10)
-		v += frac / magnitude
+		if frac != 0 {
+			f64frac := float64(frac)
+			// scale down the digits of the fraction
+			powBase10 := math.Ceil(math.Log10(f64frac))
+			magnitude := math.Pow(10.0, powBase10)
+			f64 += f64frac / magnitude
+		}
 	}
 
 	if i >= len(data) {
-		return sign * v, i, nil
+		if isNeg {
+			i64 = -i64
+			f64 = -f64
+		}
+		return f64, i64, isInt, i, nil
 	}
 
 	// scan an exponent
@@ -456,7 +484,7 @@ func scanNumber(data []byte, i int) (float64, int, error) {
 	if b == 'e' || b == 'E' {
 		i++
 		if i >= len(data) {
-			return sign * v, i, syntaxErr(i, scanningForExponentSign, nil)
+			return f64, i64, isInt, i, syntaxErr(i, scanningForExponentSign, nil)
 		}
 		b := data[i]
 
@@ -470,20 +498,54 @@ func scanNumber(data []byte, i int) (float64, int, error) {
 		}
 
 		// find the exponent
-		var exp float64
+		var exp int64
 		exp, i, err = scanDigits(data, i)
 		if err != nil {
-			return sign * v, i, syntaxErr(i, scanningForExponent, err.(*SyntaxError))
+			return f64, i64, isInt, i, syntaxErr(i, scanningForExponent, err.(*SyntaxError))
 		}
+		expf64 := float64(exp)
 		// scale up or down the value
 		if isNegExp {
-			v /= math.Pow(10.0, exp)
+			f64 /= math.Pow(10.0, expf64)
+			if isInt && f64 == float64(int64(f64)) {
+				// still an integer
+				i64 /= intPow(10, exp)
+				isInt = true
+			} else {
+				isInt = false
+				i64 = 0
+			}
 		} else {
-			v *= math.Pow(10.0, exp)
+			f64 *= math.Pow(10.0, expf64)
+			if isInt && f64 >= float64(math.MaxInt64) {
+				isInt = false
+				i64 = 0 // would overflow
+			} else {
+				i64 *= intPow(10, exp)
+			}
 		}
 	}
+	if isNeg {
+		i64 = -i64
+		f64 = -f64
+	}
+	return f64, i64, isInt, i, nil
+}
 
-	return sign * v, i, nil
+func intPow(n, m int64) int64 {
+	if m == 0 {
+		return 1
+	}
+
+	if m == 1 {
+		return n
+	}
+
+	result := n
+	for i := int64(2); i <= m; i++ {
+		result *= n
+	}
+	return result
 }
 
 const (
@@ -494,7 +556,7 @@ const (
 // scanDigits reads an integer value from data and advances i one-past
 // the last digit component of data.
 // it does not deal with whitespace
-func scanDigits(data []byte, i int) (float64, int, error) {
+func scanDigits(data []byte, i int) (int64, int, error) {
 	// digits := (digit | digit digits)
 
 	if i >= len(data) {
@@ -506,7 +568,7 @@ func scanDigits(data []byte, i int) (float64, int, error) {
 	if b < '0' || b > '9' {
 		return 0, i, syntaxErr(i, needAtLeastOneDigit, nil)
 	}
-	v := float64(b - '0')
+	v := int64(b - '0')
 
 	// that might be it
 	i++
@@ -519,9 +581,9 @@ func scanDigits(data []byte, i int) (float64, int, error) {
 		if b < '0' || b > '9' {
 			return v, i + j, nil
 		}
-		ival := int(b - '0')
+		ival := int64(b - '0')
 		v *= 10
-		v += float64(ival)
+		v += ival
 	}
 
 	i = len(data)

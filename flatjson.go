@@ -99,11 +99,11 @@ func (pfxs Prefixes) AsString(data []byte) string {
 		if pfx.IsArrayIndex() {
 			bd.WriteString(strconv.Itoa(pfx.Index()))
 		} else {
-			s, err := strconv.Unquote(pfx.String(data))
+			s, err := Unquote(pfx.Bytes(data))
 			if err != nil {
 				panic(fmt.Sprintf("prefix %q: %v", pfx.String(data), err))
 			}
-			bd.WriteString(s)
+			bd.Write(s)
 		}
 	}
 	return bd.String()

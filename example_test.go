@@ -23,6 +23,15 @@ func ExampleScanObject() {
 			}
 			fmt.Printf("value=%f\n", val.Value)
 		},
+		OnInteger: func(prefixes flatjson.Prefixes, val flatjson.Integer) {
+			fmt.Printf("path=%s\n", prefixes.AsString(data))
+			if val.Name.IsObjectKey() {
+				fmt.Printf("key=%s\n", val.Name.String(data))
+			} else {
+				fmt.Printf("index=%d\n", val.Name.Index())
+			}
+			fmt.Printf("value=%d\n", val.Value)
+		},
 		OnString: func(prefixes flatjson.Prefixes, val flatjson.String) {
 			fmt.Printf("path=%s\n", prefixes.AsString(data))
 			if val.Name.IsObjectKey() {

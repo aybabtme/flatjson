@@ -735,6 +735,101 @@ func TestScanNumbersNoError(t *testing.T) {
 	}
 }
 
+func TestScanNumberF64(t *testing.T) {
+	tests := []struct {
+		Name string
+
+		Start int
+		Data  string
+
+		WantF64   float64
+		WantI64   int64
+		WantIsInt bool
+		WantEnd   int
+	}{
+		{
+			Name:    "real number, 0.5",
+			Data:    "0.5",
+			WantF64: 0.5,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real number, 1.1",
+			Data:    "1.1",
+			WantF64: 1.1,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real number, 2.1",
+			Data:    "2.1",
+			WantF64: 2.1,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real number, 3.7",
+			Data:    "3.7",
+			WantF64: 3.7,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real number, 4.1",
+			Data:    "4.1",
+			WantF64: 4.1,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real number, 5.9",
+			Data:    "5.9",
+			WantF64: 5.9,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real number, 1.0001",
+			Data:    "1.0001",
+			WantF64: 1.0001,
+			WantEnd: 6,
+		},
+		{
+			Name:    "real number, 1.010020",
+			Data:    "1.010020",
+			WantF64: 1.010020,
+			WantEnd: 8,
+		},
+		{
+			Name:    "real number, 600.12345",
+			Data:    "600.12345",
+			WantF64: 600.12345,
+			WantEnd: 9,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			gotF64, gotI64, gotIsInt, gotEnd, gotErr := ScanNumber([]byte(tt.Data), tt.Start)
+
+			if gotErr != nil {
+				t.Fatal(gotErr)
+			}
+
+			if want, got := tt.WantEnd, gotEnd; want != got {
+				t.Errorf("want advance to %d, got %d", want, got)
+			}
+			if want, got := tt.WantF64, gotF64; !fequal(want, got) {
+				t.Errorf("want val %v", want)
+				t.Errorf(" got val %v", got)
+			}
+			if want, got := tt.WantI64, gotI64; want != got {
+				t.Errorf("want val %v", want)
+				t.Errorf(" got val %v", got)
+			}
+			if want, got := tt.WantIsInt, gotIsInt; want != got {
+				t.Errorf("want val %v", want)
+				t.Errorf(" got val %v", got)
+			}
+		})
+	}
+}
+
 func TestScanDigits(t *testing.T) {
 	tests := []struct {
 		Name string

@@ -362,6 +362,42 @@ func TestScanNumbersNoError(t *testing.T) {
 			WantF64: -9000.14159,
 			WantEnd: 11,
 		},
+		{
+			Name:    "real numbers, 0.5",
+			Data:    "0.5",
+			WantF64: 0.5,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real numbers, 1.1",
+			Data:    "1.1",
+			WantF64: 1.1,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real numbers, 2.1",
+			Data:    "2.1",
+			WantF64: 2.1,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real numbers, 3.7",
+			Data:    "3.7",
+			WantF64: 3.7,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real numbers, 4.1",
+			Data:    "4.1",
+			WantF64: 4.1,
+			WantEnd: 3,
+		},
+		{
+			Name:    "real numbers, 5.9",
+			Data:    "5.9",
+			WantF64: 5.9,
+			WantEnd: 3,
+		},
 
 		// with a positive exponent
 		{

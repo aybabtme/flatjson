@@ -457,16 +457,18 @@ func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ er
 		isInt = false
 		i64 = 0
 		i++
+		fracStart := i
 		var frac int64
 		frac, i, err = scanDigits(data, i)
 		if err != nil {
 			return f64, i64, isInt, i, syntaxErr(i, scanningForFraction, err.(*SyntaxError))
 		}
+		fracEnd := i
 		if frac != 0 {
 			f64frac := float64(frac)
 			// scale down the digits of the fraction
-			powBase10 := math.Ceil(math.Log10(f64frac))
-			magnitude := math.Pow(10.0, powBase10)
+			lenAfterDecimalPoint := fracEnd - fracStart
+			magnitude := math.Pow(10.0, float64(lenAfterDecimalPoint))
 			f64 += f64frac / magnitude
 		}
 	}

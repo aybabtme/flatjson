@@ -598,6 +598,13 @@ func TestScanNumbersNoError(t *testing.T) {
 			WantF64: -9000.14159e-42,
 			WantEnd: 15,
 		},
+		// bigger than max int64, value should be parsed as float64
+		{
+			Name:    "bigger than max int64",
+			Data:    "92233720368547758070",
+			WantF64: 92233720368547758070,
+			WantEnd: 20,
+		},
 
 		// with a garbage and negative exponent
 		{

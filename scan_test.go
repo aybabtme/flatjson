@@ -1,6 +1,7 @@
 package flatjson
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -746,6 +747,7 @@ func TestScanNumberF64(t *testing.T) {
 		WantI64   int64
 		WantIsInt bool
 		WantEnd   int
+		WantError error
 	}{
 		{
 			Name:    "real number, 0.5",
@@ -801,14 +803,43 @@ func TestScanNumberF64(t *testing.T) {
 			WantF64: 600.12345,
 			WantEnd: 9,
 		},
+		{
+			Name:    "real number, 1234567890123456789.0",
+			Data:    "1234567890123456789.0",
+			WantF64: 1234567890123456789.0,
+			WantEnd: 21,
+		},
+		{
+			Name:      "real number, 0.785398163397448278999491",
+			Data:      "0.785398163397448278999491",
+			WantF64:   0.0,
+			WantEnd:   21, // after decimal point, max length of scannable digits is 19 since max int64 is 9223372036854775807
+			WantError: ErrScanTooLargeNumber,
+		},
+		{
+			Name:    "real number, 10.7853981633974482789",
+			Data:    "10.7853981633974482789",
+			WantF64: 10.7853981633974482789,
+			WantEnd: 22,
+		},
+		{
+			Name:    "real number, 1234567890123456789.1234567890123456789",
+			Data:    "1234567890123456789.1234567890123456789",
+			WantF64: 1234567890123456789.1234567890123456789,
+			WantEnd: 39,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 			gotF64, gotI64, gotIsInt, gotEnd, gotErr := ScanNumber([]byte(tt.Data), tt.Start)
 
-			if gotErr != nil {
-				t.Fatal(gotErr)
+			if wantErr, gotErr := tt.WantError, gotErr; wantErr != nil && gotErr != nil {
+				t.Logf("gotErr: %q", gotErr.Error())
+				if !errors.Is(gotErr, wantErr) {
+					t.Errorf("want error: %q\n", wantErr.Error())
+					t.Errorf("got error: %q\n", gotErr.Error())
+				}
 			}
 
 			if want, got := tt.WantEnd, gotEnd; want != got {

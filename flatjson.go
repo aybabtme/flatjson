@@ -1,6 +1,7 @@
 package flatjson
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -75,6 +76,28 @@ func (s *SyntaxError) Error() string {
 		return s.Message
 	}
 	return s.Message + ", " + s.SubErr.Error()
+}
+
+type ScanError struct {
+	Offset     int
+	ScanTarget string
+	Err        error
+}
+
+func scanErr(offset int, target string, err error) *ScanError {
+	return &ScanError{
+		Offset:     offset,
+		ScanTarget: target,
+		Err:        err,
+	}
+}
+
+func (s *ScanError) Error() string {
+	return fmt.Sprintf("from %s offset %d: %s", s.ScanTarget, s.Offset, s.Err.Error())
+}
+
+func (s *ScanError) Unwrap() error {
+	return s.Err
 }
 
 type Pos struct {
@@ -461,7 +484,12 @@ func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ er
 		var frac int64
 		frac, i, err = scanDigits(data, i)
 		if err != nil {
-			return f64, i64, isInt, i, syntaxErr(i, scanningForFraction, err.(*SyntaxError))
+			switch e := err.(type) {
+			case *SyntaxError:
+				return f64, i64, isInt, i, syntaxErr(i, scanningForFraction, e)
+			default:
+				return f64, i64, isInt, i, fmt.Errorf("%s: %w", scanningForFraction, scanErr(i, string(data), e))
+			}
 		}
 		fracEnd := i
 		if frac != 0 {
@@ -553,6 +581,11 @@ func intPow(n, m int64) int64 {
 const (
 	needAtLeastOneDigit     = "need at least one digit"
 	reachedEndScanningDigit = "reached end of data scanning digits"
+	tooLargeNumber          = "number is too large"
+)
+
+var (
+	ErrScanTooLargeNumber = errors.New(tooLargeNumber)
 )
 
 // scanDigits reads an integer value from data and advances i one-past
@@ -564,7 +597,6 @@ func scanDigits(data []byte, i int) (int64, int, error) {
 	if i >= len(data) {
 		return 0, i, syntaxErr(i, reachedEndScanningDigit, nil)
 	}
-
 	// scan one digit
 	b := data[i]
 	if b < '0' || b > '9' {
@@ -584,6 +616,10 @@ func scanDigits(data []byte, i int) (int64, int, error) {
 			return v, i + j, nil
 		}
 		ival := int64(b - '0')
+		if v > math.MaxInt64/10 {
+			// v will overflow in the next iteration
+			return 0, i + j, ErrScanTooLargeNumber
+		}
 		v *= 10
 		v += ival
 	}

@@ -2,6 +2,7 @@ package flatjson
 
 import (
 	"bufio"
+	"compress/gzip"
 	"encoding/json"
 	"os"
 	"testing"
@@ -11,7 +12,11 @@ import (
 )
 
 func BenchmarkFlatJSON(b *testing.B) {
-	lines := loadObjects(b, "dump.json")
+	b.Run("movies", func(b *testing.B) { benchmarkFlatJSON(b, "testdata/movies.json.gz") })
+	b.Run("logs", func(b *testing.B) { benchmarkFlatJSON(b, "testdata/logs.json.gz") })
+}
+func benchmarkFlatJSON(b *testing.B, filename string) {
+	lines := loadObjects(b, filename)
 
 	b.ResetTimer()
 	for i, line := range lines {
@@ -36,7 +41,11 @@ func BenchmarkFlatJSON(b *testing.B) {
 }
 
 func BenchmarkEncodingJSON(b *testing.B) {
-	lines := loadObjects(b, "dump.json")
+	b.Run("movies", func(b *testing.B) { benchmarkEncodingJSON(b, "testdata/movies.json.gz") })
+	b.Run("logs", func(b *testing.B) { benchmarkEncodingJSON(b, "testdata/logs.json.gz") })
+}
+func benchmarkEncodingJSON(b *testing.B, filename string) {
+	lines := loadObjects(b, filename)
 	q := struct{}{}
 	b.ResetTimer()
 	for i, line := range lines {
@@ -51,7 +60,11 @@ func BenchmarkEncodingJSON(b *testing.B) {
 }
 
 func Benchmark_buger_jsonparse(b *testing.B) {
-	lines := loadObjects(b, "dump.json")
+	b.Run("movies", func(b *testing.B) { benchmark_buger_jsonparse(b, "testdata/movies.json.gz") })
+	b.Run("logs", func(b *testing.B) { benchmark_buger_jsonparse(b, "testdata/logs.json.gz") })
+}
+func benchmark_buger_jsonparse(b *testing.B, filename string) {
+	lines := loadObjects(b, filename)
 
 	b.ResetTimer()
 	for i, line := range lines {
@@ -71,7 +84,11 @@ func Benchmark_buger_jsonparse(b *testing.B) {
 }
 
 func Benchmark_valyala_fastjson(b *testing.B) {
-	lines := loadObjects(b, "dump.json")
+	b.Run("movies", func(b *testing.B) { benchmark_valyala_fastjson(b, "testdata/movies.json.gz") })
+	b.Run("logs", func(b *testing.B) { benchmark_valyala_fastjson(b, "testdata/logs.json.gz") })
+}
+func benchmark_valyala_fastjson(b *testing.B, filename string) {
+	lines := loadObjects(b, filename)
 
 	b.ResetTimer()
 	for i, line := range lines {
@@ -97,7 +114,14 @@ func loadObjects(b *testing.B, filename string) [][]byte {
 	}
 	defer f.Close()
 
-	scan := bufio.NewScanner(f)
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		b.Error(err)
+		return nil
+	}
+	defer gzr.Close()
+
+	scan := bufio.NewScanner(gzr)
 	scan.Split(bufio.ScanLines)
 
 	for scan.Scan() {

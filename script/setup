@@ -4,12 +4,13 @@ set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
 
-function download_benchmark_dump_file() {
-    curl https://raw.githubusercontent.com/prust/wikipedia-movie-data/master/movies.json | jq -r -c '.[]' > ${root}/dump.json
+function download_benchmark_movies_file() {
+    curl https://raw.githubusercontent.com/prust/wikipedia-movie-data/master/movies.json | jq -r -c '.[]' > ${root}/testdata/movies.json
+    gzip ${root}/testdata/movies.json
 }
 
 function main() {
-    download_benchmark_dump_file
+    download_benchmark_movies_file
 }
 
 main

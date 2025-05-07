@@ -412,16 +412,13 @@ func ScanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ er
 	return scanNumber(data, i)
 }
 func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ error) {
-
 	if i >= len(data) {
 		return 0, 0, false, i, syntaxErr(i, reachedEndScanningNumber, nil)
 	}
 
-	// sign := 1.0
 	isNeg := false
 	if data[i] == '-' {
 		isNeg = true
-		// sign = -sign
 		i++
 	}
 
@@ -430,14 +427,24 @@ func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ er
 	}
 
 	var i64 int64
+	var f64 float64
 	var err error
 
-	// scan an integer
-	b := data[i]
-	if b == '0' {
+	isInt = true
+	digit := data[i]
+	if digit == '0' {
 		i++
-	} else if b >= '1' && b <= '9' {
-		i64, i, err = scanDigits(data, i)
+	} else if digit >= '1' && digit <= '9' {
+		var ok bool
+		i64, i, ok, err = scanAsI64(data, i)
+		if err != nil {
+			return 0, 0, false, i, err
+		}
+		if !ok {
+			isInt = false
+			f64, i, err = resumeScanAsF64(data, i, float64(i64))
+			i64 = 0
+		}
 	} else {
 		err = syntaxErr(i, cantFindIntegerPart, nil)
 	}
@@ -445,32 +452,25 @@ func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ er
 	if err != nil || i >= len(data) {
 		if isNeg {
 			i64 = -i64
+			f64 = -f64
 		}
-		return 0, i64, true, i, err
+		return f64, i64, isInt, i, err
 	}
-	isInt = true
-
-	f64 := float64(i64)
 
 	// scan fraction
 	if data[i] == '.' {
+		if isInt {
+			f64 = float64(i64)
+		}
 		isInt = false
 		i64 = 0
 		i++
-		fracStart := i
-		var frac int64
-		frac, i, err = scanDigits(data, i)
+		var frac float64
+		frac, i, err = scanFractionalPart(data, i)
 		if err != nil {
 			return f64, i64, isInt, i, syntaxErr(i, scanningForFraction, err.(*SyntaxError))
 		}
-		fracEnd := i
-		if frac != 0 {
-			f64frac := float64(frac)
-			// scale down the digits of the fraction
-			lenAfterDecimalPoint := fracEnd - fracStart
-			magnitude := math.Pow(10.0, float64(lenAfterDecimalPoint))
-			f64 += f64frac / magnitude
-		}
+		f64 += frac
 	}
 
 	if i >= len(data) {
@@ -481,9 +481,12 @@ func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ er
 		return f64, i64, isInt, i, nil
 	}
 
+	if isInt {
+		f64 = float64(i64)
+	}
+
 	// scan an exponent
-	b = data[i]
-	if b == 'e' || b == 'E' {
+	if data[i] == 'e' || data[i] == 'E' {
 		i++
 		if i >= len(data) {
 			return f64, i64, isInt, i, syntaxErr(i, scanningForExponentSign, nil)
@@ -501,7 +504,7 @@ func scanNumber(data []byte, i int) (_ float64, _ int64, isInt bool, _ int, _ er
 
 		// find the exponent
 		var exp int64
-		exp, i, err = scanDigits(data, i)
+		exp, i, _, err = scanAsI64(data, i)
 		if err != nil {
 			return f64, i64, isInt, i, syntaxErr(i, scanningForExponent, err.(*SyntaxError))
 		}
@@ -589,6 +592,75 @@ func scanDigits(data []byte, i int) (int64, int, error) {
 	}
 
 	i = len(data)
+	return v, i, nil
+}
+
+func scanAsI64(data []byte, i int) (int64, int, bool, error) {
+	// Attempts to scan digits as int64. Returns (value, new index, ok, error).
+	// ok=false if overflow occurs or no digits found.
+	if i >= len(data) {
+		return 0, i, false, syntaxErr(i, reachedEndScanningDigit, nil)
+	}
+	b := data[i]
+	if b < '0' || b > '9' {
+		return 0, i, false, syntaxErr(i, needAtLeastOneDigit, nil)
+	}
+	v := int64(b - '0')
+	maxDiv10 := int64(math.MaxInt64 / 10)
+	maxMod10 := int64(math.MaxInt64 % 10)
+	i++
+	for ; i < len(data); i++ {
+		b = data[i]
+		if b < '0' || b > '9' {
+			return v, i, true, nil
+		}
+		d := int64(b - '0')
+		if v > maxDiv10 || (v == maxDiv10 && d > maxMod10) {
+			// overflow
+			return v, i, false, nil
+		}
+		v = v*10 + d
+	}
+	return v, i, true, nil
+}
+
+func resumeScanAsF64(data []byte, i int, f64 float64) (float64, int, error) {
+	if i >= len(data) {
+		return 0, i, syntaxErr(i, reachedEndScanningDigit, nil)
+	}
+	b := data[i]
+	if b < '0' || b > '9' {
+		return f64, i, syntaxErr(i, needAtLeastOneDigit, nil)
+	}
+	for ; i < len(data); i++ {
+		d := data[i]
+		if d < '0' || d > '9' {
+			return f64, i, nil
+		}
+		f64 = f64*10 + float64(d-'0')
+	}
+	return f64, i, nil
+}
+
+func scanFractionalPart(data []byte, i int) (float64, int, error) {
+	if i >= len(data) {
+		return 0, i, syntaxErr(i, reachedEndScanningDigit, nil)
+	}
+	d := data[i]
+	if d < '0' || d > '9' {
+		return 0, i, syntaxErr(i, needAtLeastOneDigit, nil)
+	}
+	scale := float64(10.0)
+	v := float64(d-'0') / scale
+	i++
+	for ; i < len(data); i++ {
+		d = data[i]
+		if d < '0' || d > '9' {
+			return v, i, nil
+		}
+		scale *= 10.0
+		v += float64(d-'0') / scale
+	}
 	return v, i, nil
 }
 

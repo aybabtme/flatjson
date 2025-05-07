@@ -363,7 +363,7 @@ func TestScanNumbersNoError(t *testing.T) {
 			WantEnd: 11,
 		},
 
-		// with a positive exponent
+		//with a positive exponent
 		{
 			Name:      "positive exponent, integer, 0",
 			Data:      "0e42",
@@ -598,6 +598,13 @@ func TestScanNumbersNoError(t *testing.T) {
 			WantF64: -9000.14159e-42,
 			WantEnd: 15,
 		},
+		// bigger than max int64, value should be parsed as float64
+		{
+			Name:    "bigger than max int64",
+			Data:    "92233720368547758070",
+			WantF64: 92233720368547758070,
+			WantEnd: 20,
+		},
 
 		// with a garbage and negative exponent
 		{
@@ -800,6 +807,18 @@ func TestScanNumberF64(t *testing.T) {
 			Data:    "600.12345",
 			WantF64: 600.12345,
 			WantEnd: 9,
+		},
+		{
+			Name:    "real number, 1234567890.1234567890",
+			Data:    "1234567890.1234567890",
+			WantF64: 1234567890.1234567890,
+			WantEnd: 21,
+		},
+		{
+			Name:    "long fractional part, 0.12345678901234567890",
+			Data:    "0.12345678901234567890",
+			WantF64: 0.12345678901234567890,
+			WantEnd: 22,
 		},
 	}
 
